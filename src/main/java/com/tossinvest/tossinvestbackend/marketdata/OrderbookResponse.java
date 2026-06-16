@@ -7,7 +7,7 @@ import lombok.NoArgsConstructor;
 import java.util.List;
 
 /**
- * 호가 조회 응답 (추정 구조). 단건(symbol) 조회.
+ * 호가 조회 응답 (실제 응답 기준 확정).
  */
 @Getter
 @NoArgsConstructor
@@ -20,7 +20,8 @@ public class OrderbookResponse {
     @NoArgsConstructor
     @JsonIgnoreProperties(ignoreUnknown = true)
     public static class Result {
-        private String symbol;
+        private String timestamp;
+        private String currency;
         private List<OrderbookLevel> asks;
         private List<OrderbookLevel> bids;
     }
@@ -30,6 +31,6 @@ public class OrderbookResponse {
     @JsonIgnoreProperties(ignoreUnknown = true)
     public static class OrderbookLevel {
         private String price;
-        private String quantity;
+        private String volume;
     }
 }

@@ -7,7 +7,7 @@ import lombok.NoArgsConstructor;
 import java.util.List;
 
 /**
- * 최근 체결 내역 조회 응답 (추정 구조).
+ * 최근 체결 내역 조회 응답 (실제 응답 기준 확정).
  */
 @Getter
 @NoArgsConstructor
@@ -20,10 +20,9 @@ public class TradeResponse {
     @NoArgsConstructor
     @JsonIgnoreProperties(ignoreUnknown = true)
     public static class Trade {
-        private String symbol;
         private String price;
-        private String quantity;
-        private String tradeTime;
-        private String changeType;
+        private String volume;
+        private String timestamp;
+        private String currency;
     }
 }

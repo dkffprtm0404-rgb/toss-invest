@@ -7,7 +7,7 @@ import lombok.NoArgsConstructor;
 import java.util.List;
 
 /**
- * 현재가 조회 응답 (추정 구조). 다건 조회 가능.
+ * 현재가 조회 응답 (실제 응답 기준 확정).
  */
 @Getter
 @NoArgsConstructor
@@ -21,10 +21,8 @@ public class PriceResponse {
     @JsonIgnoreProperties(ignoreUnknown = true)
     public static class Price {
         private String symbol;
-        private String currentPrice;
-        private String changePrice;
-        private String changeRate;
-        private String changeType;
-        private String volume;
+        private String timestamp;
+        private String lastPrice;
+        private String currency;
     }
 }

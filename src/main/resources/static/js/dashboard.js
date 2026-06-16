@@ -162,15 +162,14 @@ async function loadPrice(symbol) {
   try {
     const data = await fetchJson(`/api/prices?symbols=${encodeURIComponent(symbol)}`);
     const price = (data.result || [])[0];
-    if (!price) {
+    if (!price || !price.lastPrice) {
       els.priceBody.textContent = '데이터 없음';
       return;
     }
-    const sign = price.changeType === 'UP' ? '▲' : price.changeType === 'DOWN' ? '▼' : '·';
-    const changeClass = price.changeType === 'UP' ? 'up' : price.changeType === 'DOWN' ? 'down' : '';
+    const time = price.timestamp ? new Date(price.timestamp).toLocaleTimeString('ko-KR', { hour12: false }) : '';
     els.priceBody.innerHTML = `
-      ${formatNumber(price.currentPrice)}
-      <span class="price-change ${changeClass}">${sign} ${formatNumber(price.changePrice)} (${formatNumber(price.changeRate)}%)</span>
+      ${formatNumber(price.lastPrice)}
+      <span class="price-change">${price.currency ?? ''} · ${time} 기준</span>
     `;
   } catch (err) {
     els.priceBody.textContent = '조회 실패: ' + err.message;
@@ -187,14 +186,14 @@ async function loadOrderbook(symbol) {
     const askRows = asks.map(level => `
       <div class="orderbook-row ask">
         <span class="ob-price">${formatNumber(level.price)}</span>
-        <span class="ob-qty">${formatNumber(level.quantity)}</span>
+        <span class="ob-qty">${formatNumber(level.volume)}</span>
       </div>
     `).join('');
 
     const bidRows = bids.map(level => `
       <div class="orderbook-row bid">
         <span class="ob-price">${formatNumber(level.price)}</span>
-        <span class="ob-qty">${formatNumber(level.quantity)}</span>
+        <span class="ob-qty">${formatNumber(level.volume)}</span>
       </div>
     `).join('');
 
@@ -213,12 +212,12 @@ async function loadTrades(symbol) {
       return;
     }
     els.tradesBody.innerHTML = trades.map(t => {
-      const cls = t.changeType === 'UP' ? 'up' : t.changeType === 'DOWN' ? 'down' : '';
+      const time = t.timestamp ? new Date(t.timestamp).toLocaleTimeString('ko-KR', { hour12: false }) : '';
       return `
-        <div class="trade-row ${cls}">
+        <div class="trade-row">
           <span class="trade-price">${formatNumber(t.price)}</span>
-          <span>${formatNumber(t.quantity)}</span>
-          <span>${t.tradeTime ?? ''}</span>
+          <span>${formatNumber(t.volume)}</span>
+          <span>${time}</span>
         </div>
       `;
     }).join('');
