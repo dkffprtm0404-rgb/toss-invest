@@ -15,9 +15,13 @@ public class AssetController {
 
     /**
      * accountSeq: /api/accounts 응답의 accountSeq 값 (X-Tossinvest-Account 헤더로 전달됨)
+     * symbol: 특정 종목으로 필터링 (선택)
      */
     @GetMapping
-    public HoldingResponse getHoldings(@RequestParam Long accountSeq) {
-        return assetService.getHoldings(accountSeq);
+    public HoldingResponse getHoldings(
+            @RequestParam Long accountSeq,
+            @RequestParam(required = false) String symbol
+    ) {
+        return assetService.getHoldings(accountSeq, symbol);
     }
 }

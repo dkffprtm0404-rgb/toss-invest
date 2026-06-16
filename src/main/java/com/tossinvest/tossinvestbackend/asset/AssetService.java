@@ -6,7 +6,6 @@ import org.springframework.stereotype.Service;
 
 /**
  * 보유 종목(자산) 조회 서비스.
- * TODO: 정확한 경로/응답구조는 asset 가이드 문서 캡처로 보정 필요 (현재 holdings는 추정).
  */
 @Service
 @RequiredArgsConstructor
@@ -16,10 +15,17 @@ public class AssetService {
 
     /**
      * accountSeq: /api/accounts 응답의 accountSeq 값. X-Tossinvest-Account 헤더로 전달된다.
+     * symbol: 특정 종목으로 필터링 (선택). 미지정 시 전체 보유 종목 기준 요약.
      */
-    public HoldingResponse getHoldings(Long accountSeq) {
+    public HoldingResponse getHoldings(Long accountSeq, String symbol) {
         return apiClient.getWithAccount(
-                uriBuilder -> uriBuilder.path("/api/v1/holdings").build(),
+                uriBuilder -> {
+                    var builder = uriBuilder.path("/api/v1/holdings");
+                    if (symbol != null && !symbol.isBlank()) {
+                        builder.queryParam("symbol", symbol);
+                    }
+                    return builder.build();
+                },
                 String.valueOf(accountSeq),
                 HoldingResponse.class
         );
