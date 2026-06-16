@@ -7,7 +7,8 @@ import lombok.NoArgsConstructor;
 import java.util.List;
 
 /**
- * 계좌 목록 조회 응답 (추정 구조).
+ * 계좌 목록 조회 응답.
+ * accountSeq는 다른 사용자 컨텍스트 API의 X-Tossinvest-Account 헤더 값으로 사용된다.
  */
 @Getter
 @NoArgsConstructor
@@ -20,8 +21,8 @@ public class AccountResponse {
     @NoArgsConstructor
     @JsonIgnoreProperties(ignoreUnknown = true)
     public static class Account {
-        private String accountNumber;
-        private String accountName;
+        private String accountNo;
+        private Long accountSeq;
         private String accountType;
     }
 }

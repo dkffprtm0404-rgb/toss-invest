@@ -6,7 +6,6 @@ import org.springframework.stereotype.Service;
 
 /**
  * 종목 정보 조회 서비스.
- * TODO: 실제 가이드 문서 확인 후 경로/쿼리파라미터 보정 필요.
  */
 @Service
 @RequiredArgsConstructor
@@ -14,15 +13,14 @@ public class StockInfoService {
 
     private final TossApiClient apiClient;
 
-    public StockResponse getStocks(String code) {
+    /**
+     * symbols: 콤마로 구분된 종목 심볼 문자열 (필수). 예: "005930" 또는 "005930,AAPL"
+     */
+    public StockResponse getStocks(String symbols) {
         return apiClient.get(
-                uriBuilder -> {
-                    var builder = uriBuilder.path("/api/v1/stocks");
-                    if (code != null && !code.isBlank()) {
-                        builder.queryParam("code", code);
-                    }
-                    return builder.build();
-                },
+                uriBuilder -> uriBuilder.path("/api/v1/stocks")
+                        .queryParam("symbols", symbols)
+                        .build(),
                 StockResponse.class
         );
     }

@@ -13,8 +13,11 @@ public class AssetController {
 
     private final AssetService assetService;
 
+    /**
+     * accountSeq: /api/accounts 응답의 accountSeq 값 (X-Tossinvest-Account 헤더로 전달됨)
+     */
     @GetMapping
-    public HoldingResponse getHoldings(@RequestParam String accountNumber) {
-        return assetService.getHoldings(accountNumber);
+    public HoldingResponse getHoldings(@RequestParam Long accountSeq) {
+        return assetService.getHoldings(accountSeq);
     }
 }

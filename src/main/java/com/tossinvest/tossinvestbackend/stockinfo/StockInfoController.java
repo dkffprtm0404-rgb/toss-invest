@@ -13,8 +13,11 @@ public class StockInfoController {
 
     private final StockInfoService stockInfoService;
 
+    /**
+     * symbols: 콤마로 구분된 종목 심볼 (필수). 예: ?symbols=005930,AAPL
+     */
     @GetMapping
-    public StockResponse getStocks(@RequestParam(required = false) String code) {
-        return stockInfoService.getStocks(code);
+    public StockResponse getStocks(@RequestParam String symbols) {
+        return stockInfoService.getStocks(symbols);
     }
 }

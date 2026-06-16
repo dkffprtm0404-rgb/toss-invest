@@ -7,8 +7,7 @@ import lombok.NoArgsConstructor;
 import java.util.List;
 
 /**
- * 종목 마스터 조회 응답.
- * 정확한 필드명은 추정이며, 404/필드 누락 시 실제 가이드 캡처로 보정 예정.
+ * 종목 기본 정보 조회 응답.
  */
 @Getter
 @NoArgsConstructor
@@ -21,9 +20,16 @@ public class StockResponse {
     @NoArgsConstructor
     @JsonIgnoreProperties(ignoreUnknown = true)
     public static class Stock {
-        private String code;
+        private String symbol;
         private String name;
+        private String englishName;
+        private String isinCode;
         private String market;
+        private String securityType;
+        private Boolean isCommonShare;
+        private String status;
         private String currency;
+        private String listDate;
+        private String delistDate;
     }
 }
