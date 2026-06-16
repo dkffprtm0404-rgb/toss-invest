@@ -5,6 +5,10 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
 import org.springframework.web.reactive.function.client.WebClient;
+import org.springframework.web.util.UriBuilder;
+
+import java.net.URI;
+import java.util.function.Function;
 
 /**
  * 토스증권 Open API 호출 래퍼.
@@ -14,6 +18,8 @@ import org.springframework.web.reactive.function.client.WebClient;
 @Component
 @RequiredArgsConstructor
 public class TossApiClient {
+
+    private static final String ACCOUNT_HEADER = "X-Tossinvest-Account";
 
     private final WebClient tossWebClient;
     private final TossOAuthService oAuthService;
@@ -49,12 +55,27 @@ public class TossApiClient {
     /**
      * UriBuilder를 사용해 쿼리 파라미터가 필요한 GET 요청을 처리한다.
      */
-    public <T> T get(java.util.function.Function<org.springframework.web.util.UriBuilder, java.net.URI> uriFunction, Class<T> responseType) {
+    public <T> T get(Function<UriBuilder, URI> uriFunction, Class<T> responseType) {
         String accessToken = oAuthService.getAccessToken();
 
         return tossWebClient.get()
                 .uri(uriFunction)
                 .header("Authorization", "Bearer " + accessToken)
+                .retrieve()
+                .bodyToMono(responseType)
+                .block();
+    }
+
+    /**
+     * 계좌 컨텍스트가 필요한 GET 요청 (X-Tossinvest-Account 헤더 첨부).
+     */
+    public <T> T getWithAccount(Function<UriBuilder, URI> uriFunction, String accountNumber, Class<T> responseType) {
+        String accessToken = oAuthService.getAccessToken();
+
+        return tossWebClient.get()
+                .uri(uriFunction)
+                .header("Authorization", "Bearer " + accessToken)
+                .header(ACCOUNT_HEADER, accountNumber)
                 .retrieve()
                 .bodyToMono(responseType)
                 .block();
