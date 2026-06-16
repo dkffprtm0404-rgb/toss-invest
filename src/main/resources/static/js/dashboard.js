@@ -10,7 +10,16 @@ const els = {
   holdingsBody: document.getElementById('holdingsBody'),
   lastUpdated: document.getElementById('lastUpdated'),
   refreshBtn: document.getElementById('refreshBtn'),
+  quotePanel: document.getElementById('quotePanel'),
+  quoteTitle: document.getElementById('quoteTitle'),
+  closeQuoteBtn: document.getElementById('closeQuoteBtn'),
+  priceBody: document.getElementById('priceBody'),
+  orderbookBody: document.getElementById('orderbookBody'),
+  tradesBody: document.getElementById('tradesBody'),
 };
+
+let activeSymbol = null;
+let activeName = null;
 
 function tickClock() {
   const now = new Date();
@@ -95,23 +104,142 @@ async function loadHoldings(accountSeq) {
     }
 
     els.holdingsBody.innerHTML = items.map(item => `
-      <tr>
+      <tr data-symbol="${item.symbol ?? ''}" data-name="${item.name ?? ''}">
         <td>${item.name ?? '—'}</td>
         <td><span class="symbol-tag">${item.symbol ?? '—'}</span></td>
         <td class="num">${formatNumber(item.quantity)}</td>
       </tr>
     `).join('');
+
+    attachRowClickHandlers();
+    markActiveRow();
   } catch (err) {
     els.holdingsBody.innerHTML = `<tr><td colspan="3" class="error-cell">보유 종목 조회 실패: ${err.message}</td></tr>`;
   }
 }
 
+function attachRowClickHandlers() {
+  els.holdingsBody.querySelectorAll('tr[data-symbol]').forEach(row => {
+    row.addEventListener('click', () => {
+      const symbol = row.dataset.symbol;
+      const name = row.dataset.name;
+      openQuotePanel(symbol, name);
+    });
+  });
+}
+
+function markActiveRow() {
+  els.holdingsBody.querySelectorAll('tr[data-symbol]').forEach(row => {
+    row.classList.toggle('active-row', row.dataset.symbol === activeSymbol);
+  });
+}
+
+function openQuotePanel(symbol, name) {
+  activeSymbol = symbol;
+  activeName = name;
+  els.quotePanel.hidden = false;
+  els.quoteTitle.textContent = `시세 상세 — ${name} (${symbol})`;
+  markActiveRow();
+  loadQuoteDetail();
+  els.quotePanel.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+}
+
+function closeQuotePanel() {
+  activeSymbol = null;
+  activeName = null;
+  els.quotePanel.hidden = true;
+  markActiveRow();
+}
+
+els.closeQuoteBtn.addEventListener('click', closeQuotePanel);
+
+async function loadQuoteDetail() {
+  if (!activeSymbol) return;
+  await Promise.all([loadPrice(activeSymbol), loadOrderbook(activeSymbol), loadTrades(activeSymbol)]);
+}
+
+async function loadPrice(symbol) {
+  try {
+    const data = await fetchJson(`/api/prices?symbols=${encodeURIComponent(symbol)}`);
+    const price = (data.result || [])[0];
+    if (!price) {
+      els.priceBody.textContent = '데이터 없음';
+      return;
+    }
+    const sign = price.changeType === 'UP' ? '▲' : price.changeType === 'DOWN' ? '▼' : '·';
+    const changeClass = price.changeType === 'UP' ? 'up' : price.changeType === 'DOWN' ? 'down' : '';
+    els.priceBody.innerHTML = `
+      ${formatNumber(price.currentPrice)}
+      <span class="price-change ${changeClass}">${sign} ${formatNumber(price.changePrice)} (${formatNumber(price.changeRate)}%)</span>
+    `;
+  } catch (err) {
+    els.priceBody.textContent = '조회 실패: ' + err.message;
+  }
+}
+
+async function loadOrderbook(symbol) {
+  try {
+    const data = await fetchJson(`/api/orderbook?symbol=${encodeURIComponent(symbol)}`);
+    const result = data.result;
+    const asks = (result.asks || []).slice(0, 5).reverse();
+    const bids = (result.bids || []).slice(0, 5);
+
+    const askRows = asks.map(level => `
+      <div class="orderbook-row ask">
+        <span class="ob-price">${formatNumber(level.price)}</span>
+        <span class="ob-qty">${formatNumber(level.quantity)}</span>
+      </div>
+    `).join('');
+
+    const bidRows = bids.map(level => `
+      <div class="orderbook-row bid">
+        <span class="ob-price">${formatNumber(level.price)}</span>
+        <span class="ob-qty">${formatNumber(level.quantity)}</span>
+      </div>
+    `).join('');
+
+    els.orderbookBody.innerHTML = askRows + '<div class="orderbook-divider"></div>' + bidRows;
+  } catch (err) {
+    els.orderbookBody.innerHTML = `<div class="error-cell">호가 조회 실패: ${err.message}</div>`;
+  }
+}
+
+async function loadTrades(symbol) {
+  try {
+    const data = await fetchJson(`/api/trades?symbol=${encodeURIComponent(symbol)}&count=20`);
+    const trades = data.result || [];
+    if (trades.length === 0) {
+      els.tradesBody.innerHTML = '<div class="loading-cell">체결 내역 없음</div>';
+      return;
+    }
+    els.tradesBody.innerHTML = trades.map(t => {
+      const cls = t.changeType === 'UP' ? 'up' : t.changeType === 'DOWN' ? 'down' : '';
+      return `
+        <div class="trade-row ${cls}">
+          <span class="trade-price">${formatNumber(t.price)}</span>
+          <span>${formatNumber(t.quantity)}</span>
+          <span>${t.tradeTime ?? ''}</span>
+        </div>
+      `;
+    }).join('');
+  } catch (err) {
+    els.tradesBody.innerHTML = `<div class="error-cell">체결 내역 조회 실패: ${err.message}</div>`;
+  }
+}
+
 async function loadAll() {
   els.lastUpdated.textContent = '갱신 중…';
-  await Promise.all([loadExchangeRate(), loadAccountsAndHoldings()]);
+  const tasks = [loadExchangeRate(), loadAccountsAndHoldings()];
+  if (activeSymbol) {
+    tasks.push(loadQuoteDetail());
+  }
+  await Promise.all(tasks);
   els.lastUpdated.textContent = '마지막 갱신 ' + new Date().toLocaleTimeString('ko-KR', { hour12: false });
 }
 
 els.refreshBtn.addEventListener('click', loadAll);
+
+// 1분(60초)마다 자동 갱신
+setInterval(loadAll, 60 * 1000);
 
 loadAll();

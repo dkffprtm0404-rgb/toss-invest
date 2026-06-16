@@ -264,8 +264,121 @@ h1, h2 {
   .topbar { padding: 18px 20px; }
   .layout { padding: 24px 20px 40px; }
   .fx-value { font-size: 26px; }
+  .quote-grid { grid-template-columns: 1fr; }
 }
 
 @media (prefers-reduced-motion: reduce) {
   .ticker-mark, .skeleton-line { animation: none; }
 }
+
+.panel-hint {
+  display: block;
+  font-size: 11px;
+  color: var(--ink-dim);
+  margin-top: 4px;
+}
+
+.holdings-table tbody tr {
+  cursor: pointer;
+  transition: background 0.12s;
+}
+
+.holdings-table tbody tr:hover {
+  background: rgba(196, 91, 62, 0.06);
+}
+
+.holdings-table tbody tr.active-row {
+  background: rgba(196, 91, 62, 0.1);
+}
+
+.quote-panel {
+  margin-top: 24px;
+  position: relative;
+}
+
+.quote-panel .panel-head {
+  display: flex;
+  align-items: baseline;
+  gap: 12px;
+  position: relative;
+}
+
+.close-btn {
+  position: absolute;
+  right: 0;
+  top: 0;
+  background: transparent;
+  border: 1px solid var(--rule);
+  color: var(--ink-dim);
+  font-size: 12px;
+  width: 28px;
+  height: 28px;
+  border-radius: 2px;
+  cursor: pointer;
+}
+
+.close-btn:hover { color: var(--accent); border-color: var(--accent); }
+
+.quote-grid {
+  display: grid;
+  grid-template-columns: 1fr 1.3fr 1.3fr;
+  gap: 24px;
+  margin-top: 8px;
+}
+
+.quote-block-label {
+  display: block;
+  font-size: 11px;
+  letter-spacing: 0.08em;
+  color: var(--ink-dim);
+  margin-bottom: 10px;
+}
+
+.quote-price {
+  font-family: 'Fraunces', serif;
+  font-size: 30px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+.quote-price .price-change {
+  display: block;
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 13px;
+  margin-top: 6px;
+}
+
+.orderbook-row {
+  display: flex;
+  justify-content: space-between;
+  font-size: 13px;
+  padding: 4px 0;
+  font-variant-numeric: tabular-nums;
+}
+
+.orderbook-row.ask .ob-price { color: var(--negative); }
+.orderbook-row.bid .ob-price { color: var(--positive); }
+
+.orderbook-divider {
+  border-top: 1px dashed var(--rule);
+  margin: 6px 0;
+}
+
+.trade-row {
+  display: flex;
+  justify-content: space-between;
+  font-size: 12px;
+  padding: 4px 0;
+  border-bottom: 1px solid var(--rule);
+  font-variant-numeric: tabular-nums;
+  color: var(--ink-dim);
+}
+
+.trade-row:last-child { border-bottom: none; }
+
+.trade-row .trade-price { color: var(--ink); }
+.trade-row.up .trade-price { color: var(--positive); }
+.trade-row.down .trade-price { color: var(--negative); }
+
+.trades-wrap { max-height: 260px; overflow-y: auto; }
+
