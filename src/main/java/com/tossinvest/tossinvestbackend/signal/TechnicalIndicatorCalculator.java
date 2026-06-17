@@ -26,6 +26,50 @@ public class TechnicalIndicatorCalculator {
     }
 
     /**
+     * 지수이동평균(EMA). 초기값은 첫 period개의 SMA로 시작하는 표준 방식.
+     * 데이터가 부족하면 null.
+     */
+    public static BigDecimal ema(List<BigDecimal> closes, int period) {
+        List<BigDecimal> series = emaSeries(closes, period);
+        return series.isEmpty() ? null : series.get(series.size() - 1);
+    }
+
+    /**
+     * 전체 구간에 대한 EMA 시계열 (앞쪽 period-1개는 null로 패딩).
+     * 골든/데드크로스 판정을 위해 직전 값과 비교가 필요할 때 사용한다.
+     */
+    public static List<BigDecimal> emaSeries(List<BigDecimal> closes, int period) {
+        List<BigDecimal> result = new java.util.ArrayList<>();
+        if (closes.size() < period) {
+            for (int i = 0; i < closes.size(); i++) result.add(null);
+            return result;
+        }
+
+        BigDecimal multiplier = BigDecimal.valueOf(2.0 / (period + 1));
+        BigDecimal prevEma = null;
+
+        for (int i = 0; i < closes.size(); i++) {
+            if (i + 1 < period) {
+                result.add(null);
+                continue;
+            }
+            if (i + 1 == period) {
+                // 초기값: 첫 period개의 SMA
+                BigDecimal initial = sma(closes.subList(0, period), period);
+                result.add(initial);
+                prevEma = initial;
+                continue;
+            }
+            BigDecimal close = closes.get(i);
+            BigDecimal curEma = close.subtract(prevEma).multiply(multiplier).add(prevEma)
+                    .setScale(4, RoundingMode.HALF_UP);
+            result.add(curEma);
+            prevEma = curEma;
+        }
+        return result;
+    }
+
+    /**
      * 전체 구간에 대한 SMA 시계열을 반환한다 (앞쪽 period-1개는 null로 패딩).
      * 골든/데드크로스 판정을 위해 직전 값과 비교가 필요할 때 사용한다.
      */
