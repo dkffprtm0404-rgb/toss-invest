@@ -104,22 +104,32 @@ async function loadHoldings(accountSeq) {
 
     const items = result.items || [];
     if (items.length === 0) {
-      els.holdingsBody.innerHTML = '<tr><td colspan="3" class="loading-cell">보유 종목이 없습니다</td></tr>';
+      els.holdingsBody.innerHTML = '<tr><td colspan="5" class="loading-cell">보유 종목이 없습니다</td></tr>';
       return;
     }
 
-    els.holdingsBody.innerHTML = items.map(item => `
-      <tr data-symbol="${item.symbol ?? ''}" data-name="${item.name ?? ''}">
-        <td>${item.name ?? '—'}</td>
-        <td><span class="symbol-tag">${item.symbol ?? '—'}</span></td>
-        <td class="num">${formatNumber(item.quantity)}</td>
-      </tr>
-    `).join('');
+    els.holdingsBody.innerHTML = items.map(item => {
+      const marketAmount = item.marketValue?.amount;
+      const rate = item.profitLoss?.rate;
+      const ratePct = rate !== undefined && rate !== null ? (Number(rate) * 100).toFixed(2) + '%' : '—';
+      const rateClass = rate !== undefined && rate !== null ? (Number(rate) > 0 ? 'up' : Number(rate) < 0 ? 'down' : '') : '';
+      const currencyLabel = item.currency === 'USD' ? '$' : '';
+
+      return `
+        <tr data-symbol="${item.symbol ?? ''}" data-name="${item.name ?? ''}" data-avgprice="${item.averagePurchasePrice ?? ''}">
+          <td>${item.name ?? '—'}</td>
+          <td><span class="symbol-tag">${item.symbol ?? '—'}</span></td>
+          <td class="num">${formatNumber(item.quantity)}</td>
+          <td class="num">${currencyLabel}${formatNumber(marketAmount)}</td>
+          <td class="num"><span class="rate-tag ${rateClass}">${ratePct}</span></td>
+        </tr>
+      `;
+    }).join('');
 
     attachRowClickHandlers();
     markActiveRow();
   } catch (err) {
-    els.holdingsBody.innerHTML = `<tr><td colspan="3" class="error-cell">보유 종목 조회 실패: ${err.message}</td></tr>`;
+    els.holdingsBody.innerHTML = `<tr><td colspan="5" class="error-cell">보유 종목 조회 실패: ${err.message}</td></tr>`;
   }
 }
 
@@ -128,7 +138,8 @@ function attachRowClickHandlers() {
     row.addEventListener('click', () => {
       const symbol = row.dataset.symbol;
       const name = row.dataset.name;
-      openQuotePanel(symbol, name, true);
+      const avgPrice = row.dataset.avgprice;
+      openQuotePanel(symbol, name, true, avgPrice);
     });
   });
 }
@@ -139,11 +150,12 @@ function markActiveRow() {
   });
 }
 
-function openQuotePanel(symbol, name, isHolding) {
+function openQuotePanel(symbol, name, isHolding, avgPrice) {
   activeSymbol = symbol;
   activeName = name;
   activeIsHolding = !!isHolding;
-  activeAvgPrice = null;
+  activeAvgPrice = avgPrice || null;
+  activeHoldingDays = null;
   els.quotePanel.hidden = false;
   els.quoteTitle.textContent = `시세 상세 — ${name} (${symbol})`;
   markActiveRow();

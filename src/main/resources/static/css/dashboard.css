@@ -212,6 +212,13 @@ h1, h2 {
   border-radius: 2px;
 }
 
+.rate-tag {
+  font-variant-numeric: tabular-nums;
+}
+
+.rate-tag.up { color: var(--positive); }
+.rate-tag.down { color: var(--negative); }
+
 .loading-cell, .error-cell {
   text-align: center;
   color: var(--ink-dim);
