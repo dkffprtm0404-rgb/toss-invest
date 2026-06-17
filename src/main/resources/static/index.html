@@ -108,6 +108,20 @@
         </div>
       </div>
     </div>
+
+    <div class="chart-block">
+      <span class="quote-block-label">일봉 차트 (최근 60일)</span>
+      <div class="chart-wrap">
+        <canvas id="candleChart" role="img" aria-label="종목 일봉 종가 추이 차트"></canvas>
+      </div>
+    </div>
+
+    <div class="signal-block">
+      <span class="quote-block-label">04 — 매매 신호 판단 (trading-rules.md v2.0)</span>
+      <div id="signalBody" class="signal-wrap">
+        <div class="skeleton-line"></div>
+      </div>
+    </div>
   </section>
 
   <footer class="foot-note">
@@ -117,6 +131,7 @@
 
 </main>
 
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.js"></script>
 <script src="/js/dashboard.js"></script>
 </body>
 </html>

@@ -16,10 +16,14 @@ const els = {
   priceBody: document.getElementById('priceBody'),
   orderbookBody: document.getElementById('orderbookBody'),
   tradesBody: document.getElementById('tradesBody'),
+  signalBody: document.getElementById('signalBody'),
 };
 
 let activeSymbol = null;
 let activeName = null;
+let activeIsHolding = false;
+let activeAvgPrice = null;
+let candleChartInstance = null;
 
 function tickClock() {
   const now = new Date();
@@ -123,7 +127,7 @@ function attachRowClickHandlers() {
     row.addEventListener('click', () => {
       const symbol = row.dataset.symbol;
       const name = row.dataset.name;
-      openQuotePanel(symbol, name);
+      openQuotePanel(symbol, name, true);
     });
   });
 }
@@ -134,9 +138,11 @@ function markActiveRow() {
   });
 }
 
-function openQuotePanel(symbol, name) {
+function openQuotePanel(symbol, name, isHolding) {
   activeSymbol = symbol;
   activeName = name;
+  activeIsHolding = !!isHolding;
+  activeAvgPrice = null;
   els.quotePanel.hidden = false;
   els.quoteTitle.textContent = `시세 상세 — ${name} (${symbol})`;
   markActiveRow();
@@ -147,15 +153,27 @@ function openQuotePanel(symbol, name) {
 function closeQuotePanel() {
   activeSymbol = null;
   activeName = null;
+  activeIsHolding = false;
+  activeAvgPrice = null;
   els.quotePanel.hidden = true;
   markActiveRow();
+  if (candleChartInstance) {
+    candleChartInstance.destroy();
+    candleChartInstance = null;
+  }
 }
 
 els.closeQuoteBtn.addEventListener('click', closeQuotePanel);
 
 async function loadQuoteDetail() {
   if (!activeSymbol) return;
-  await Promise.all([loadPrice(activeSymbol), loadOrderbook(activeSymbol), loadTrades(activeSymbol)]);
+  await Promise.all([
+    loadPrice(activeSymbol),
+    loadOrderbook(activeSymbol),
+    loadTrades(activeSymbol),
+    loadCandleChart(activeSymbol),
+    loadSignal(activeSymbol),
+  ]);
 }
 
 async function loadPrice(symbol) {
@@ -223,6 +241,164 @@ async function loadTrades(symbol) {
     }).join('');
   } catch (err) {
     els.tradesBody.innerHTML = `<div class="error-cell">체결 내역 조회 실패: ${err.message}</div>`;
+  }
+}
+
+async function loadCandleChart(symbol) {
+  const canvas = document.getElementById('candleChart');
+  try {
+    const data = await fetchJson(`/api/candles?symbol=${encodeURIComponent(symbol)}&interval=1d&count=60`);
+    const candles = (data.result?.candles || []).slice().reverse(); // 오래된 -> 최신
+
+    const labels = candles.map(c => {
+      const d = new Date(c.timestamp);
+      return `${d.getMonth() + 1}/${d.getDate()}`;
+    });
+    const closes = candles.map(c => Number(c.closePrice));
+
+    if (candleChartInstance) {
+      candleChartInstance.destroy();
+    }
+
+    candleChartInstance = new Chart(canvas, {
+      type: 'line',
+      data: {
+        labels,
+        datasets: [{
+          label: '종가',
+          data: closes,
+          borderColor: '#c45b3e',
+          backgroundColor: 'rgba(196, 91, 62, 0.08)',
+          borderWidth: 1.5,
+          pointRadius: 0,
+          fill: true,
+          tension: 0.15,
+        }],
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: { legend: { display: false } },
+        scales: {
+          x: {
+            ticks: { color: '#8a8478', maxTicksLimit: 10, font: { family: 'IBM Plex Mono', size: 10 } },
+            grid: { color: 'rgba(255,255,255,0.04)' },
+          },
+          y: {
+            ticks: {
+              color: '#8a8478',
+              font: { family: 'IBM Plex Mono', size: 10 },
+              callback: (v) => Number(v).toLocaleString('ko-KR'),
+            },
+            grid: { color: 'rgba(255,255,255,0.04)' },
+          },
+        },
+      },
+    });
+  } catch (err) {
+    console.error('캔들 차트 로드 실패', err);
+  }
+}
+
+function signalTagLabel(type) {
+  switch (type) {
+    case 'BUY_CANDIDATE': return '매수 후보';
+    case 'SELL_STOP_LOSS': return '손절';
+    case 'SELL_TAKE_PROFIT': return '트레일링 스탑 매도';
+    case 'SELL_TREND_REVERSAL': return '추세전환 매도';
+    default: return '보유 유지';
+  }
+}
+
+function signalBannerClass(type) {
+  if (type === 'BUY_CANDIDATE') return 'buy';
+  if (type === 'SELL_STOP_LOSS' || type === 'SELL_TAKE_PROFIT' || type === 'SELL_TREND_REVERSAL') return 'sell';
+  return 'hold';
+}
+
+function renderSignal(signal) {
+  const cls = signalBannerClass(signal.signalType);
+  const scoreText = signal.score !== null && signal.score !== undefined
+    ? `점수 ${signal.score} / ${signal.scoreThreshold}`
+    : '';
+
+  const metaItems = [];
+  if (signal.ema5 !== undefined && signal.ema5 !== null) metaItems.push(['EMA5', formatNumber(signal.ema5)]);
+  if (signal.ema20 !== undefined && signal.ema20 !== null) metaItems.push(['EMA20', formatNumber(signal.ema20)]);
+  if (signal.rsi7 !== undefined && signal.rsi7 !== null) metaItems.push(['RSI(7)', signal.rsi7]);
+  if (signal.volumeSurge !== undefined && signal.volumeSurge !== null) metaItems.push(['거래량 서지', signal.volumeSurge ? 'YES' : 'NO']);
+  if (signal.trailingStopPrice !== undefined && signal.trailingStopPrice !== null) metaItems.push(['트레일링 기준가', formatNumber(signal.trailingStopPrice)]);
+
+  const metaHtml = metaItems.map(([label, value]) => `
+    <div class="signal-meta-item">
+      <span class="signal-meta-label">${label}</span>
+      <span class="signal-meta-value">${value}</span>
+    </div>
+  `).join('');
+
+  const conditionsHtml = (signal.matchedConditions || [])
+    .map(c => `<div>✓ ${c}</div>`).join('')
+    + (signal.excludedReasons || []).map(c => `<div>✕ ${c}</div>`).join('');
+
+  return `
+    <div class="signal-banner ${cls}">
+      <span class="signal-tag">${signalTagLabel(signal.signalType)}</span>
+      <span>${scoreText}</span>
+    </div>
+    ${metaItems.length ? `<div class="signal-meta-grid">${metaHtml}</div>` : ''}
+    <div class="signal-conditions">${conditionsHtml || signal.summary || ''}</div>
+  `;
+}
+
+async function loadSignal(symbol) {
+  try {
+    let url;
+    if (activeIsHolding) {
+      const avgPrice = activeAvgPrice ?? document.getElementById('signalAvgPriceInput')?.value;
+      if (!avgPrice) {
+        els.signalBody.innerHTML = `
+          <div class="signal-conditions">매도 신호 판단을 위해 평균 매수가를 입력해주세요.</div>
+          <div class="signal-sell-form">
+            <span>평균 매수가</span>
+            <input type="number" id="signalAvgPriceInput" placeholder="예: 340000" />
+            <button class="refresh-btn" id="signalAvgPriceSubmit">판단하기</button>
+          </div>
+        `;
+        document.getElementById('signalAvgPriceSubmit').addEventListener('click', () => {
+          const v = document.getElementById('signalAvgPriceInput').value;
+          if (v) {
+            activeAvgPrice = v;
+            loadSignal(symbol);
+          }
+        });
+        return;
+      }
+      url = `/api/signals/sell?symbol=${encodeURIComponent(symbol)}&avgPrice=${avgPrice}`;
+    } else {
+      url = `/api/signals/buy?symbol=${encodeURIComponent(symbol)}`;
+    }
+
+    const signal = await fetchJson(url);
+    els.signalBody.innerHTML = renderSignal(signal);
+
+    if (activeIsHolding) {
+      els.signalBody.innerHTML += `
+        <div class="signal-sell-form">
+          <span>평균 매수가</span>
+          <input type="number" id="signalAvgPriceInput" value="${activeAvgPrice ?? ''}" placeholder="예: 340000" />
+          <button class="refresh-btn" id="signalAvgPriceSubmit">다시 판단</button>
+        </div>
+      `;
+      document.getElementById('signalAvgPriceSubmit').addEventListener('click', () => {
+        const v = document.getElementById('signalAvgPriceInput').value;
+        if (v) {
+          activeAvgPrice = v;
+          loadSignal(symbol);
+        }
+      });
+    }
+  } catch (err) {
+    els.signalBody.innerHTML = `<div class="error-cell">신호 판단 실패: ${err.message}</div>`;
   }
 }
 
