@@ -11,8 +11,9 @@ import java.util.ArrayList;
 import java.util.List;
 
 /**
- * .docs/trading-rules.md (v2.0) 의 매매 규칙을 캔들 데이터에 적용해 신호를 판단한다.
+ * .docs/trading-rules.md (v2.1) 의 매매 규칙을 캔들 데이터에 적용해 신호를 판단한다.
  * 1단계(신호 생성)만 수행하며, 실주문은 발생시키지 않는다.
+ * v2.1 핵심: 모호한 정성적 예외를 모두 제거하고 숫자/조건으로만 판단한다.
  */
 @Service
 @RequiredArgsConstructor
@@ -24,14 +25,17 @@ public class TradeSignalService {
     private static final int BREAKOUT_LOOKBACK = 5;
     private static final BigDecimal VOLUME_SURGE_MULTIPLIER = BigDecimal.valueOf(1.5);
     private static final BigDecimal STOP_LOSS_RATE = BigDecimal.valueOf(-0.02);
-    private static final BigDecimal RSI_OVERBOUGHT = BigDecimal.valueOf(70);
+    private static final BigDecimal RSI_INVALIDATE_THRESHOLD = BigDecimal.valueOf(80); // 1.2 v2.1: 80 이상 예외없이 무효
     private static final BigDecimal RSI_OVERSOLD = BigDecimal.valueOf(30);
+    private static final BigDecimal MIN_AVG_TRADING_VALUE_KRW = BigDecimal.valueOf(10_000_000_000L); // 1.4: 100억원
     private static final int BUY_SCORE_THRESHOLD = 5;
+    private static final int BUY_SCORE_THRESHOLD_EXPERIMENTAL = 4; // 2.1: 4점 기준 병행 기록
+    private static final BigDecimal TRAILING_TRIGGER_RATE = BigDecimal.valueOf(0.03);
 
     private final MarketDataService marketDataService;
 
     /**
-     * 보유하지 않은 종목에 대한 매수 후보 판단 (점수제, v2.0).
+     * 보유하지 않은 종목에 대한 매수 후보 판단 (점수제, v2.1).
      */
     public TradeSignal evaluateForBuy(String symbol) {
         CandleResponse candleResponse = marketDataService.getCandles(symbol, "1d", 60);
@@ -62,34 +66,32 @@ public class TradeSignalService {
         boolean volumeSurge = avgVolume != null && avgVolume.signum() > 0 && currentVolume != null
                 && currentVolume.compareTo(avgVolume.multiply(VOLUME_SURGE_MULTIPLIER)) >= 0;
 
+        // 1.4 거래대금 필터: 직전 5일 평균 거래대금 = Σ(종가 × 거래량) / 5
+        BigDecimal avgTradingValue = calculateRecentAvgTradingValue(closes, volumes, BREAKOUT_LOOKBACK);
+
         List<BigDecimal> emaShortSeries = TechnicalIndicatorCalculator.emaSeries(closes, EMA_SHORT);
         List<BigDecimal> emaLongSeries = TechnicalIndicatorCalculator.emaSeries(closes, EMA_LONG);
         boolean goldenCross = isGoldenCross(emaShortSeries, emaLongSeries);
 
         boolean breakoutWithVolume = recentHigh != null && currentPrice.compareTo(recentHigh) > 0 && volumeSurge;
-
         boolean rsiReboundFromOversold = isRsiReboundFromOversold(closes);
 
         List<String> matched = new ArrayList<>();
         List<String> excluded = new ArrayList<>();
         int score = 0;
 
-        // A. 골든크로스 - 2점
         if (goldenCross) {
             matched.add("A. 골든크로스 (EMA" + EMA_SHORT + " > EMA" + EMA_LONG + ") [+2]");
             score += 2;
         }
-        // B. RSI 과매도 반등 - 1점
         if (rsiReboundFromOversold) {
             matched.add("B. RSI(" + RSI_PERIOD + ") 과매도 반등 [+1]");
             score += 1;
         }
-        // C. 거래량 동반 돌파 - 3점 (가장 강한 신호)
         if (breakoutWithVolume) {
             matched.add("C. 거래량 동반 직전 " + BREAKOUT_LOOKBACK + "일 최고가 돌파 [+3]");
             score += 3;
         }
-        // D. 변동성 돌파 - 2점
         BigDecimal volatilityTarget = calculateVolatilityBreakoutTarget(candles);
         boolean breakoutTargetHit = volatilityTarget != null && currentPrice.compareTo(volatilityTarget) >= 0;
         if (breakoutTargetHit) {
@@ -97,12 +99,17 @@ public class TradeSignalService {
             score += 2;
         }
 
-        if (rsi != null && rsi.compareTo(RSI_OVERBOUGHT) >= 0) {
-            excluded.add("RSI 과매수 구간(" + rsi + ") - 매수 후보 제외");
+        // 2.2 제외 조건 (v2.1: 전부 수치 기준, 예외 없음)
+        if (rsi != null && rsi.compareTo(RSI_INVALIDATE_THRESHOLD) >= 0) {
+            excluded.add("RSI(" + rsi + ") ≥ 80 - 매수 무효 (예외 없음)");
         }
-        // TODO: 1.6 시장 지수(KOSPI/KOSDAQ) EMA20 필터 - 지수 시세 API 확인 후 추가 연동 필요
+        if (avgTradingValue != null && avgTradingValue.compareTo(MIN_AVG_TRADING_VALUE_KRW) < 0) {
+            excluded.add("직전 5일 평균 거래대금(" + formatKrw(avgTradingValue) + ") < 100억원 - 매수 무효");
+        }
+        // TODO: 1.7 시장 지수(KOSPI/KOSDAQ) EMA20 + 기울기 필터 - 지수 시세 API 확인 후 연동 필요
 
         boolean buySignal = score >= BUY_SCORE_THRESHOLD && excluded.isEmpty();
+        boolean experimentalBuySignal = score >= BUY_SCORE_THRESHOLD_EXPERIMENTAL && excluded.isEmpty();
 
         TradeSignal.TradeSignalBuilder builder = TradeSignal.builder()
                 .symbol(symbol)
@@ -122,20 +129,25 @@ public class TradeSignalService {
             builder.signalType(SignalType.BUY_CANDIDATE)
                     .summary("매수 후보: 점수 " + score + "/" + BUY_SCORE_THRESHOLD + " 이상 충족");
         } else {
+            String expNote = experimentalBuySignal && excluded.isEmpty()
+                    ? " (참고: 실험 임계값 4점 기준으로는 충족 - 2.1 병행기록용)"
+                    : "";
             builder.signalType(SignalType.HOLD)
-                    .summary(excluded.isEmpty()
+                    .summary((excluded.isEmpty()
                             ? "점수 미달 (" + score + "/" + BUY_SCORE_THRESHOLD + ")"
-                            : "제외 조건 발생: " + String.join(", ", excluded));
+                            : "제외 조건 발생: " + String.join(", ", excluded)) + expNote);
         }
 
         return builder.build();
     }
 
     /**
-     * 보유 중인 종목에 대한 매도(손절/트레일링스탑/추세전환) 판단 (v2.0).
-     * avgPrice: 평균 매수가, peakRateSinceBuy: 매수 이후 기록된 최고 수익률(없으면 null 또는 현재 수익률 전달).
+     * 보유 중인 종목에 대한 매도(손절/트레일링스탑/추세전환/시간기반) 판단 (v2.1).
+     * avgPrice: 평균 매수가
+     * peakRateSinceBuy: 매수 이후 기록된 최고 수익률(없으면 null 가능, 이 경우 현재 수익률을 최고치로 간주)
+     * holdingDays: 매수 후 경과 거래일수 (3.4 시간 기반 청산 판단에 사용, 모르면 null 가능 - 이 경우 3.4 미적용)
      */
-    public TradeSignal evaluateForSell(String symbol, BigDecimal avgPrice, BigDecimal peakRateSinceBuy) {
+    public TradeSignal evaluateForSell(String symbol, BigDecimal avgPrice, BigDecimal peakRateSinceBuy, Integer holdingDays) {
         CandleResponse candleResponse = marketDataService.getCandles(symbol, "1d", 60);
         List<CandleResponse.Candle> candles = sortedAscending(candleResponse);
 
@@ -159,6 +171,8 @@ public class TradeSignalService {
                 ? changeRate
                 : changeRate.max(peakRateSinceBuy);
 
+        boolean trailingEverTriggered = effectivePeakRate.compareTo(TRAILING_TRIGGER_RATE) >= 0;
+
         // 3.1 손절 - 최우선, 예외 없음
         if (changeRate.compareTo(STOP_LOSS_RATE) <= 0) {
             return TradeSignal.builder()
@@ -170,13 +184,29 @@ public class TradeSignalService {
                     .build();
         }
 
-        // 3.2 트레일링 스탑 계산
+        // 3.4 시간 기반 강제매도: 5거래일 초과 + 트레일링 한 번도 미발동 시 예외없이 매도 (v2.1)
+        if (holdingDays != null && holdingDays > 5 && !trailingEverTriggered) {
+            return TradeSignal.builder()
+                    .symbol(symbol)
+                    .signalType(SignalType.SELL_TREND_REVERSAL)
+                    .currentPrice(currentPrice)
+                    .matchedConditions(List.of("3.4 보유 " + holdingDays + "거래일 초과 + 트레일링 미발동 - 시간 기반 강제매도"))
+                    .summary("시간 기반 강제매도: " + holdingDays + "거래일 경과, 트레일링 미발동")
+                    .build();
+        }
+
+        // 3.2 트레일링 스탑
         BigDecimal trailingStopRate = calculateTrailingStopRate(effectivePeakRate);
         BigDecimal trailingStopPrice = avgPrice.multiply(BigDecimal.ONE.add(trailingStopRate))
                 .setScale(2, RoundingMode.HALF_UP);
 
+        // 3.4 보조: 3일 초과 + 트레일링 미발동 시 트레일링 시작 기준을 +3%에서 +1.5%로 낮춤
+        BigDecimal effectiveTrailingTrigger = (holdingDays != null && holdingDays > 3 && !trailingEverTriggered)
+                ? BigDecimal.valueOf(0.015)
+                : TRAILING_TRIGGER_RATE;
+
         if (trailingStopRate != null && changeRate.compareTo(trailingStopRate) < 0
-                && effectivePeakRate.compareTo(BigDecimal.valueOf(0.03)) >= 0) {
+                && effectivePeakRate.compareTo(effectiveTrailingTrigger) >= 0) {
             return TradeSignal.builder()
                     .symbol(symbol)
                     .signalType(SignalType.SELL_TAKE_PROFIT)
@@ -191,7 +221,7 @@ public class TradeSignalService {
                     .build();
         }
 
-        // 3.3 추세 전환 (데드크로스 또는 직전 5일 최저가 하향 돌파)
+        // 3.3 추세 전환
         if (closes.size() >= EMA_LONG + 1) {
             List<BigDecimal> emaShortSeries = TechnicalIndicatorCalculator.emaSeries(closes, EMA_SHORT);
             List<BigDecimal> emaLongSeries = TechnicalIndicatorCalculator.emaSeries(closes, EMA_LONG);
@@ -223,23 +253,21 @@ public class TradeSignalService {
                 .currentPrice(currentPrice)
                 .trailingStopPrice(trailingStopPrice)
                 .summary("보유 유지: 평단가 대비 " + percentString(changeRate)
-                        + (effectivePeakRate.compareTo(BigDecimal.valueOf(0.03)) >= 0
+                        + (trailingEverTriggered
                             ? " (트레일링 스탑 기준선 " + percentString(trailingStopRate) + ")"
                             : ""))
                 .build();
     }
 
     /**
-     * trading-rules.md 3.2 트레일링 스탑 구간표를 적용한다.
-     * peakRate(매수 이후 최고 수익률)에 따라 손절 기준선(수익률 기준)을 반환.
-     * +3% 미도달 시 null (트레일링 미발동, 3.1 고정 손절만 적용).
+     * trading-rules.md 3.2 트레일링 스탑 구간표. peakRate 기준 +3%p 간격으로 기준선 산출.
+     * +3% 미도달 시 null.
      */
     private BigDecimal calculateTrailingStopRate(BigDecimal peakRate) {
-        if (peakRate.compareTo(BigDecimal.valueOf(0.03)) < 0) {
+        if (peakRate.compareTo(TRAILING_TRIGGER_RATE) < 0) {
             return null;
         }
-        // 임계값들: peak가 3,5,8,11,14...% 도달마다 기준선이 0,2,5,8,11...%로 따라감 (+3%p 간격)
-        BigDecimal threshold = BigDecimal.valueOf(0.03);
+        BigDecimal threshold = TRAILING_TRIGGER_RATE;
         BigDecimal stopLine = BigDecimal.ZERO;
         BigDecimal step = BigDecimal.valueOf(0.03);
 
@@ -247,7 +275,6 @@ public class TradeSignalService {
             threshold = threshold.add(step);
             stopLine = stopLine.add(step);
         }
-        // 마지막에 한 단계 초과했으므로 한 칸 되돌림
         return stopLine.subtract(step);
     }
 
@@ -264,8 +291,19 @@ public class TradeSignalService {
     }
 
     /**
-     * 1.5 변동성 돌파 목표가 = 당일 시가 + (직전일 고가-저가) * K(0.5)
+     * 1.4 거래대금 필터: 직전 N일(마지막 캔들 제외) 평균 거래대금 = Σ(종가 × 거래량) / N
      */
+    private BigDecimal calculateRecentAvgTradingValue(List<BigDecimal> closes, List<BigDecimal> volumes, int lookback) {
+        if (closes.size() <= lookback) return null;
+        BigDecimal sum = BigDecimal.ZERO;
+        int start = closes.size() - 1 - lookback;
+        int end = closes.size() - 1;
+        for (int i = start; i < end; i++) {
+            sum = sum.add(closes.get(i).multiply(volumes.get(i)));
+        }
+        return sum.divide(BigDecimal.valueOf(lookback), 2, RoundingMode.HALF_UP);
+    }
+
     private BigDecimal calculateVolatilityBreakoutTarget(List<CandleResponse.Candle> candles) {
         if (candles.size() < 2) return null;
         CandleResponse.Candle today = candles.get(candles.size() - 1);
@@ -307,7 +345,6 @@ public class TradeSignalService {
                         ? response.getResult().getCandles()
                         : List.of()
         );
-        // API는 최신순(내림차순)으로 내려주므로 오래된 것 -> 최신 순으로 뒤집는다.
         java.util.Collections.reverse(candles);
         return candles;
     }
@@ -324,5 +361,9 @@ public class TradeSignalService {
 
     private String percentString(BigDecimal rate) {
         return rate.multiply(BigDecimal.valueOf(100)).setScale(2, RoundingMode.HALF_UP) + "%";
+    }
+
+    private String formatKrw(BigDecimal value) {
+        return value.divide(BigDecimal.valueOf(100_000_000), 1, RoundingMode.HALF_UP) + "억원";
     }
 }

@@ -23,6 +23,7 @@ let activeSymbol = null;
 let activeName = null;
 let activeIsHolding = false;
 let activeAvgPrice = null;
+let activeHoldingDays = null;
 let candleChartInstance = null;
 
 function tickClock() {
@@ -155,6 +156,7 @@ function closeQuotePanel() {
   activeName = null;
   activeIsHolding = false;
   activeAvgPrice = null;
+  activeHoldingDays = null;
   els.quotePanel.hidden = true;
   markActiveRow();
   if (candleChartInstance) {
@@ -357,10 +359,12 @@ async function loadSignal(symbol) {
       const avgPrice = activeAvgPrice ?? document.getElementById('signalAvgPriceInput')?.value;
       if (!avgPrice) {
         els.signalBody.innerHTML = `
-          <div class="signal-conditions">매도 신호 판단을 위해 평균 매수가를 입력해주세요.</div>
+          <div class="signal-conditions">매도 신호 판단을 위해 평균 매수가를 입력해주세요. (보유일수는 선택)</div>
           <div class="signal-sell-form">
             <span>평균 매수가</span>
             <input type="number" id="signalAvgPriceInput" placeholder="예: 340000" />
+            <span>보유일수</span>
+            <input type="number" id="signalHoldingDaysInput" placeholder="예: 3" style="width:70px" />
             <button class="refresh-btn" id="signalAvgPriceSubmit">판단하기</button>
           </div>
         `;
@@ -368,12 +372,14 @@ async function loadSignal(symbol) {
           const v = document.getElementById('signalAvgPriceInput').value;
           if (v) {
             activeAvgPrice = v;
+            activeHoldingDays = document.getElementById('signalHoldingDaysInput').value || null;
             loadSignal(symbol);
           }
         });
         return;
       }
-      url = `/api/signals/sell?symbol=${encodeURIComponent(symbol)}&avgPrice=${avgPrice}`;
+      const daysParam = activeHoldingDays ? `&holdingDays=${activeHoldingDays}` : '';
+      url = `/api/signals/sell?symbol=${encodeURIComponent(symbol)}&avgPrice=${avgPrice}${daysParam}`;
     } else {
       url = `/api/signals/buy?symbol=${encodeURIComponent(symbol)}`;
     }
@@ -386,6 +392,8 @@ async function loadSignal(symbol) {
         <div class="signal-sell-form">
           <span>평균 매수가</span>
           <input type="number" id="signalAvgPriceInput" value="${activeAvgPrice ?? ''}" placeholder="예: 340000" />
+          <span>보유일수</span>
+          <input type="number" id="signalHoldingDaysInput" value="${activeHoldingDays ?? ''}" placeholder="예: 3" style="width:70px" />
           <button class="refresh-btn" id="signalAvgPriceSubmit">다시 판단</button>
         </div>
       `;
@@ -393,6 +401,7 @@ async function loadSignal(symbol) {
         const v = document.getElementById('signalAvgPriceInput').value;
         if (v) {
           activeAvgPrice = v;
+          activeHoldingDays = document.getElementById('signalHoldingDaysInput').value || null;
           loadSignal(symbol);
         }
       });
