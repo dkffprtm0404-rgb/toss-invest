@@ -31,4 +31,16 @@ public class MarketDataController {
     ) {
         return marketDataService.getTrades(symbol, count);
     }
+
+    /**
+     * interval: 1m(분봉) 또는 1d(일봉)
+     */
+    @GetMapping("/api/candles")
+    public CandleResponse getCandles(
+            @RequestParam String symbol,
+            @RequestParam(defaultValue = "1d") String interval,
+            @RequestParam(defaultValue = "100") int count
+    ) {
+        return marketDataService.getCandles(symbol, interval, count);
+    }
 }

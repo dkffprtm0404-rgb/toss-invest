@@ -50,4 +50,18 @@ public class MarketDataService {
                 TradeResponse.class
         );
     }
+
+    /**
+     * symbol: 단일 종목 심볼, interval: 1m/1d, count: 최대 200
+     */
+    public CandleResponse getCandles(String symbol, String interval, int count) {
+        return apiClient.get(
+                uriBuilder -> uriBuilder.path("/api/v1/candles")
+                        .queryParam("symbol", symbol)
+                        .queryParam("interval", interval)
+                        .queryParam("count", count)
+                        .build(),
+                CandleResponse.class
+        );
+    }
 }
