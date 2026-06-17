@@ -15,6 +15,7 @@ import java.util.List;
  * 1단계(신호 생성)만 수행하며, 실주문은 발생시키지 않는다.
  * v2.1 핵심: 모호한 정성적 예외를 모두 제거하고 숫자/조건으로만 판단한다.
  * v2.1 3차 보정: 거래대금 임계값 100억→30억(검증전 기본값 명시), 갭상승(+10%) 매수제외 필터 추가.
+ * v2.1 5차 보정: 거래량 제외조건 삭제(1.3 점수제로 통일), 시장필터는 코스피+코스닥 모두 충족(AND, 보수형)으로 확정 (TODO: 지수 API 연동 전까지 비활성).
  */
 @Service
 @RequiredArgsConstructor
@@ -114,7 +115,8 @@ public class TradeSignalService {
         if (gapUpRate != null && gapUpRate.compareTo(GAP_UP_INVALIDATE_RATE) >= 0) {
             excluded.add("당일 갭상승률(" + percentString(gapUpRate) + ") ≥ +10% - 매수 무효 (예외 없음)");
         }
-        // TODO: 1.8 시장 지수(KOSPI/KOSDAQ) EMA20 + 기울기 필터 - 지수 시세 API 확인 후 연동 필요
+        // TODO: 1.8 시장 지수 필터 - 코스피와 코스닥 두 지수 모두 (종가>EMA20 AND EMA20 5일전보다 상승)을
+        // 충족해야 신규매수 허용(보수형, AND로 확정). 지수 시세 API 확인 후 연동 필요.
 
         boolean buySignal = score >= BUY_SCORE_THRESHOLD && excluded.isEmpty();
         boolean experimentalBuySignal = score >= BUY_SCORE_THRESHOLD_EXPERIMENTAL && excluded.isEmpty();
