@@ -82,6 +82,8 @@ public class TradeSignalService {
         List<String> excluded = new ArrayList<>();
         int score = 0;
 
+        // 점수 가중치(A=2,B=1,C=3,D=2)는 일반적 단타기법의 경험적 중요도를 반영한 초기 추정값이다.
+        // 확정된 근거를 가진 수치가 아니며, 백테스트 결과에 따라 조정될 수 있다 (trading-rules.md 2.1 참고).
         if (goldenCross) {
             matched.add("A. 골든크로스 (EMA" + EMA_SHORT + " > EMA" + EMA_LONG + ") [+2]");
             score += 2;
@@ -177,6 +179,8 @@ public class TradeSignalService {
                 ? changeRate
                 : changeRate.max(peakRateSinceBuy);
 
+        // 3.4 용어정의: "트레일링 스탑 발동"은 현재 수익률이 아니라 보유 기간 중 최고수익률(effectivePeakRate)이
+        // +3% 이상을 기록한 적이 있는지로 판단한다 (trading-rules.md 3.4 참고).
         boolean trailingEverTriggered = effectivePeakRate.compareTo(TRAILING_TRIGGER_RATE) >= 0;
 
         // 3.1 손절 - 최우선, 예외 없음
@@ -297,7 +301,10 @@ public class TradeSignalService {
     }
 
     /**
-     * 1.4 거래대금 필터: 직전 N일(마지막 캔들 제외) 평균 거래대금 = Σ(종가 × 거래량) / N
+     * 1.4 거래대금 필터: 직전 N일(마지막 캔들 제외) 평균 거래대금.
+     * 토스증권 캔들 API는 거래대금 필드를 별도 제공하지 않으므로 종가 × 거래량으로 근사 계산한다
+     * (API가 거래대금을 직접 제공하게 되면 그 값을 우선 사용하도록 변경 - trading-rules.md 1.4 참고).
+     * 일중 가격 변동을 반영하지 못해 실제 거래대금과 차이가 날 수 있는 근사치임을 인지한다.
      */
     private BigDecimal calculateRecentAvgTradingValue(List<BigDecimal> closes, List<BigDecimal> volumes, int lookback) {
         if (closes.size() <= lookback) return null;
