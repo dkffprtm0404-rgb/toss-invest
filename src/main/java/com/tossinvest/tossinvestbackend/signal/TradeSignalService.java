@@ -16,6 +16,8 @@ import java.util.List;
  * v2.1 핵심: 모호한 정성적 예외를 모두 제거하고 숫자/조건으로만 판단한다.
  * v2.1 3차 보정: 거래대금 임계값 100억→30억(검증전 기본값 명시), 갭상승(+10%) 매수제외 필터 추가.
  * v2.1 5차 보정: 거래량 제외조건 삭제(1.3 점수제로 통일), 시장필터는 코스피+코스닥 모두 충족(AND, 보수형)으로 확정 (TODO: 지수 API 연동 전까지 비활성).
+ * v2.1 7차(최종) 보정: 시간청산-트레일링 발동기준을 고정3%가 아닌 holdingDays기반 trailingStartThreshold로 통일(실버그 수정),
+ *   1.9 당일급등(+20%, 현재가기준) 필터 추가, 시장필터는 종목소속시장(코스피/코스닥)의 지수만 사용하도록 TODO 갱신.
  */
 @Service
 @RequiredArgsConstructor
@@ -31,6 +33,7 @@ public class TradeSignalService {
     private static final BigDecimal RSI_OVERSOLD = BigDecimal.valueOf(30);
     private static final BigDecimal MIN_AVG_TRADING_VALUE_KRW = BigDecimal.valueOf(3_000_000_000L); // 1.4: 30억원 (검증전 기본값)
     private static final BigDecimal GAP_UP_INVALIDATE_RATE = BigDecimal.valueOf(0.10); // 1.5: 전일종가대비 +10% 이상 갭상승 시 매수무효
+    private static final BigDecimal DAY_SURGE_INVALIDATE_RATE = BigDecimal.valueOf(0.20); // 1.9: 전일종가대비 현재가 +20% 이상 급등 시 매수무효
     private static final int BUY_SCORE_THRESHOLD = 5;
     private static final int BUY_SCORE_THRESHOLD_EXPERIMENTAL = 4; // 2.1: 4점 기준 병행 기록
     private static final BigDecimal TRAILING_TRIGGER_RATE = BigDecimal.valueOf(0.03);
@@ -115,8 +118,13 @@ public class TradeSignalService {
         if (gapUpRate != null && gapUpRate.compareTo(GAP_UP_INVALIDATE_RATE) >= 0) {
             excluded.add("당일 갭상승률(" + percentString(gapUpRate) + ") ≥ +10% - 매수 무효 (예외 없음)");
         }
-        // TODO: 1.8 시장 지수 필터 - 코스피와 코스닥 두 지수 모두 (종가>EMA20 AND EMA20 5일전보다 상승)을
-        // 충족해야 신규매수 허용(보수형, AND로 확정). 지수 시세 API 확인 후 연동 필요.
+        BigDecimal daySurgeRate = calculateDaySurgeRate(candles, currentPrice);
+        if (daySurgeRate != null && daySurgeRate.compareTo(DAY_SURGE_INVALIDATE_RATE) >= 0) {
+            excluded.add("당일 상승률(" + percentString(daySurgeRate) + ") ≥ +20% - 매수 무효 (예외 없음, 1.9 당일급등필터)");
+        }
+        // TODO: 1.8 시장 지수 필터 - 종목이 속한 시장(코스피/코스닥)의 지수만 사용해
+        // (종가>EMA20 AND EMA20 5일전보다 상승)을 충족해야 신규매수 허용. StockInfo API의 market필드로 판별.
+        // 지수 시세 API 자체의 제공 여부 확인 후 연동 필요.
 
         boolean buySignal = score >= BUY_SCORE_THRESHOLD && excluded.isEmpty();
         boolean experimentalBuySignal = score >= BUY_SCORE_THRESHOLD_EXPERIMENTAL && excluded.isEmpty();
@@ -181,9 +189,15 @@ public class TradeSignalService {
                 ? changeRate
                 : changeRate.max(peakRateSinceBuy);
 
-        // 3.4 용어정의: "트레일링 스탑 발동"은 현재 수익률이 아니라 보유 기간 중 최고수익률(effectivePeakRate)이
-        // +3% 이상을 기록한 적이 있는지로 판단한다 (trading-rules.md 3.4 참고).
-        boolean trailingEverTriggered = effectivePeakRate.compareTo(TRAILING_TRIGGER_RATE) >= 0;
+        // 3.4 trailingStartThreshold: holdingDays>3이면 1.5%, 아니면 3% (그 시점에 적용되던 시작기준)
+        BigDecimal trailingStartThreshold = (holdingDays != null && holdingDays > 3)
+                ? BigDecimal.valueOf(0.015)
+                : TRAILING_TRIGGER_RATE;
+
+        // 3.4 용어정의(7차 보정): "트레일링 스탑 발동"은 고정 +3%가 아니라, 그 시점에 적용 중이던
+        // trailingStartThreshold를 보유 기간 중 최고수익률(effectivePeakRate)이 충족했는지로 판단한다
+        // (trading-rules.md 3.4 참고). 예: 4일째 +1.7% 도달 시 그 시점 기준은 1.5%이므로 발동된 것으로 취급.
+        boolean trailingEverTriggered = effectivePeakRate.compareTo(trailingStartThreshold) >= 0;
 
         // 3.1 손절 - 최우선, 예외 없음
         if (changeRate.compareTo(STOP_LOSS_RATE) <= 0) {
@@ -207,18 +221,15 @@ public class TradeSignalService {
                     .build();
         }
 
-        // 3.2 트레일링 스탑
-        BigDecimal trailingStopRate = calculateTrailingStopRate(effectivePeakRate);
-        BigDecimal trailingStopPrice = avgPrice.multiply(BigDecimal.ONE.add(trailingStopRate))
-                .setScale(2, RoundingMode.HALF_UP);
-
-        // 3.4 보조: 3일 초과 + 트레일링 미발동 시 트레일링 시작 기준을 +3%에서 +1.5%로 낮춤
-        BigDecimal effectiveTrailingTrigger = (holdingDays != null && holdingDays > 3 && !trailingEverTriggered)
-                ? BigDecimal.valueOf(0.015)
-                : TRAILING_TRIGGER_RATE;
+        // 3.2 트레일링 스탑: 3.4 보정에 따라 시작 임계값(trailingStartThreshold) 자체를 기준으로 구간을 산출한다.
+        // 4일째 이후 미발동 상태면 시작 기준이 1.5%로 낮아지므로, 트레일링 구간표(+3%p 간격)도 그 시작점부터 다시 계산한다.
+        BigDecimal trailingStopRate = calculateTrailingStopRate(effectivePeakRate, trailingStartThreshold);
+        BigDecimal trailingStopPrice = trailingStopRate == null
+                ? null
+                : avgPrice.multiply(BigDecimal.ONE.add(trailingStopRate)).setScale(2, RoundingMode.HALF_UP);
 
         if (trailingStopRate != null && changeRate.compareTo(trailingStopRate) < 0
-                && effectivePeakRate.compareTo(effectiveTrailingTrigger) >= 0) {
+                && trailingEverTriggered) {
             return TradeSignal.builder()
                     .symbol(symbol)
                     .signalType(SignalType.SELL_TAKE_PROFIT)
@@ -265,21 +276,23 @@ public class TradeSignalService {
                 .currentPrice(currentPrice)
                 .trailingStopPrice(trailingStopPrice)
                 .summary("보유 유지: 평단가 대비 " + percentString(changeRate)
-                        + (trailingEverTriggered
+                        + (trailingEverTriggered && trailingStopRate != null
                             ? " (트레일링 스탑 기준선 " + percentString(trailingStopRate) + ")"
                             : ""))
                 .build();
     }
 
     /**
-     * trading-rules.md 3.2 트레일링 스탑 구간표. peakRate 기준 +3%p 간격으로 기준선 산출.
-     * +3% 미도달 시 null.
+     * trading-rules.md 3.2 트레일링 스탑 구간표. startThreshold(시작 임계값) 도달 시 본전(0%)으로,
+     * 이후 +3%p 상승마다 기준선도 동일하게 +3%p씩 상향한다.
+     * startThreshold는 3.4 보정에 따라 holdingDays>3이면 1.5%, 아니면 3%로 호출부에서 결정해 전달한다.
+     * peakRate가 startThreshold 미달이면 null (트레일링 미발동).
      */
-    private BigDecimal calculateTrailingStopRate(BigDecimal peakRate) {
-        if (peakRate.compareTo(TRAILING_TRIGGER_RATE) < 0) {
+    private BigDecimal calculateTrailingStopRate(BigDecimal peakRate, BigDecimal startThreshold) {
+        if (peakRate.compareTo(startThreshold) < 0) {
             return null;
         }
-        BigDecimal threshold = TRAILING_TRIGGER_RATE;
+        BigDecimal threshold = startThreshold;
         BigDecimal stopLine = BigDecimal.ZERO;
         BigDecimal step = BigDecimal.valueOf(0.03);
 
@@ -345,6 +358,19 @@ public class TradeSignalService {
         if (prevClose.signum() == 0) return null;
 
         return todayOpen.subtract(prevClose).divide(prevClose, 6, RoundingMode.HALF_UP);
+    }
+
+    /**
+     * 1.9 당일 급등 필터: 당일 상승률 = (현재가 - 전일 종가) / 전일 종가.
+     * 1.5(갭상승, 시가 기준)와 보완적 - 시가 자체가 급등한 경우와 장중 급등한 경우를 각각 잡는다.
+     */
+    private BigDecimal calculateDaySurgeRate(List<CandleResponse.Candle> candles, BigDecimal currentPrice) {
+        if (candles.size() < 2) return null;
+        CandleResponse.Candle prevDay = candles.get(candles.size() - 2);
+        BigDecimal prevClose = new BigDecimal(prevDay.getClosePrice());
+        if (prevClose.signum() == 0) return null;
+
+        return currentPrice.subtract(prevClose).divide(prevClose, 6, RoundingMode.HALF_UP);
     }
 
     private boolean isGoldenCross(List<BigDecimal> shortSeries, List<BigDecimal> longSeries) {
