@@ -6,7 +6,6 @@ import org.springframework.stereotype.Service;
 
 /**
  * 시세 데이터(현재가/호가/체결) 조회 서비스.
- * TODO: 응답 구조는 추정이며, 실제 가이드 문서 확인 시 보정 필요.
  */
 @Service
 @RequiredArgsConstructor
@@ -14,9 +13,6 @@ public class MarketDataService {
 
     private final TossApiClient apiClient;
 
-    /**
-     * symbols: 콤마로 구분된 종목 심볼 (다건 가능)
-     */
     public PriceResponse getPrices(String symbols) {
         return apiClient.get(
                 uriBuilder -> uriBuilder.path("/api/v1/prices")
@@ -26,9 +22,6 @@ public class MarketDataService {
         );
     }
 
-    /**
-     * symbol: 단일 종목 심볼
-     */
     public OrderbookResponse getOrderbook(String symbol) {
         return apiClient.get(
                 uriBuilder -> uriBuilder.path("/api/v1/orderbook")
@@ -38,9 +31,6 @@ public class MarketDataService {
         );
     }
 
-    /**
-     * symbol: 단일 종목 심볼, count: 조회 건수
-     */
     public TradeResponse getTrades(String symbol, int count) {
         return apiClient.get(
                 uriBuilder -> uriBuilder.path("/api/v1/trades")
@@ -52,7 +42,7 @@ public class MarketDataService {
     }
 
     /**
-     * symbol: 단일 종목 심볼, interval: 1m/1d, count: 최대 200
+     * 일봉 캔들 조회 (최신부터, before 없음).
      */
     public CandleResponse getCandles(String symbol, String interval, int count) {
         return apiClient.get(
@@ -60,8 +50,26 @@ public class MarketDataService {
                         .queryParam("symbol", symbol)
                         .queryParam("interval", interval)
                         .queryParam("count", count)
+                        .queryParam("adjusted", true)
                         .build(),
                 CandleResponse.class
         );
+    }
+
+    /**
+     * 일봉 캔들 조회 - before 날짜시간 지정 (페이지네이션용).
+     * before는 "YYYY-MM-DDTHH:mm:ss+09:00" 형식.
+     * queryParam 경유 시 '+' 이중 인코딩 문제가 있어 URI 문자열을 직접 조립해 호출한다.
+     * '+09:00'의 '+'를 '%2B'로 수동 대체해 정확한 URL을 구성한다.
+     */
+    public CandleResponse getCandlesWithDateBefore(String symbol, String interval, int count, String beforeDatetime) {
+        // '+09:00'의 '+' → '%2B' 수동 치환 후 전체를 path 문자열에 직접 삽입
+        String encodedBefore = beforeDatetime.replace("+", "%2B");
+        String uri = "/api/v1/candles?symbol=" + symbol
+                + "&interval=" + interval
+                + "&count=" + count
+                + "&adjusted=true"
+                + "&before=" + encodedBefore;
+        return apiClient.get(uri, CandleResponse.class);
     }
 }

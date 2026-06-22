@@ -41,3 +41,8 @@ application-local.yaml
 application-local.yml
 .env
 
+### Toss Invest - 백테스트 캔들 캐시 DB (로컬 데이터, 용량 크고 커밋 불필요) ###
+data/
+*.mv.db
+*.trace.db
+

@@ -4,7 +4,7 @@ spring:
   profiles:
     active: local
   datasource:
-    url: jdbc:h2:mem:tossinvest
+    url: jdbc:h2:file:./data/tossinvest;AUTO_SERVER=TRUE
     driver-class-name: org.h2.Driver
     username: sa
     password:

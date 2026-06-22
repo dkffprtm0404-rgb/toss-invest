@@ -34,6 +34,13 @@ public class TossApiClient {
                 .uri(uri)
                 .header("Authorization", "Bearer " + accessToken)
                 .retrieve()
+                .onStatus(status -> status.is4xxClientError(), response ->
+                        response.bodyToMono(String.class).defaultIfEmpty("(empty body)")
+                                .flatMap(body -> {
+                                    log.warn("[TossApiClient] {} 응답 - 요청: {}, 바디: {}", response.statusCode(), uri, body);
+                                    return reactor.core.publisher.Mono.error(new RuntimeException(
+                                            "토스 API " + response.statusCode() + " 응답 바디: " + body));
+                                }))
                 .bodyToMono(responseType)
                 .block();
     }
@@ -54,6 +61,7 @@ public class TossApiClient {
 
     /**
      * UriBuilder를 사용해 쿼리 파라미터가 필요한 GET 요청을 처리한다.
+     * 4xx 응답 시 토스 API가 반환한 에러 응답 바디를 그대로 예외 메시지에 포함시켜 원인 파악이 쉽도록 한다.
      */
     public <T> T get(Function<UriBuilder, URI> uriFunction, Class<T> responseType) {
         String accessToken = oAuthService.getAccessToken();
@@ -62,6 +70,13 @@ public class TossApiClient {
                 .uri(uriFunction)
                 .header("Authorization", "Bearer " + accessToken)
                 .retrieve()
+                .onStatus(status -> status.is4xxClientError(), response ->
+                        response.bodyToMono(String.class).defaultIfEmpty("(empty body)")
+                                .flatMap(body -> {
+                                    log.warn("[TossApiClient] {} 응답 - 요청: {}, 바디: {}", response.statusCode(), uriFunction, body);
+                                    return reactor.core.publisher.Mono.error(new RuntimeException(
+                                            "토스 API " + response.statusCode() + " 응답 바디: " + body));
+                                }))
                 .bodyToMono(responseType)
                 .block();
     }
