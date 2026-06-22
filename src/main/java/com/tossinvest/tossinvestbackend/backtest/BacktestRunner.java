@@ -36,14 +36,19 @@ public class BacktestRunner {
         Map<String, List<CandleEntity>> candlesBySymbol = symbols.stream()
                 .collect(Collectors.toMap(s -> s, candleRepository::findBySymbolOrderByTimestampAsc));
 
+        // 종목당 지표를 한 번만 사전계산 (648개 파라미터 조합 전체에서 재사용)
+        Map<String, BacktestEngine.PrecomputedIndicators> indicatorsBySymbol = candlesBySymbol.entrySet().stream()
+                .filter(e -> e.getValue().size() >= 21)
+                .collect(Collectors.toMap(Map.Entry::getKey, e -> engine.precompute(e.getValue())));
+
         List<ParamGroupResult> paramResults = new ArrayList<>();
 
         for (BacktestParams params : grid) {
             List<BacktestResult> perSymbolResults = new ArrayList<>();
             for (String symbol : symbols) {
-                List<CandleEntity> candles = candlesBySymbol.get(symbol);
-                if (candles == null || candles.size() < 21) continue; // 최소 워밍업 데이터 없으면 스킵
-                perSymbolResults.add(engine.run(symbol, candles, params));
+                BacktestEngine.PrecomputedIndicators ind = indicatorsBySymbol.get(symbol);
+                if (ind == null) continue;
+                perSymbolResults.add(engine.runWithIndicators(symbol, ind, params));
             }
             paramResults.add(aggregate(params, perSymbolResults));
         }
