@@ -438,4 +438,81 @@ els.refreshBtn.addEventListener('click', loadAll);
 // 1분(60초)마다 자동 갱신
 setInterval(loadAll, 60 * 1000);
 
+// ── 페이퍼 트레이딩 ─────────────────────────────────────────────────────────
+async function loadPaperSummary() {
+  try {
+    const s = await fetchJson('/api/paper/summary');
+    document.getElementById('ptTotalTrades').textContent = s.totalTrades;
+    document.getElementById('ptWinRate').textContent = (s.winRate * 100).toFixed(1) + '%';
+    document.getElementById('ptAvgReturn').textContent = (s.avgReturn * 100).toFixed(2) + '%';
+    document.getElementById('ptCumReturn').textContent = (s.cumReturn * 100).toFixed(2) + '%';
+
+    // 보유 중 포지션
+    const openBody = document.getElementById('ptOpenBody');
+    const open = s.openPositions || [];
+    if (open.length === 0) {
+      openBody.innerHTML = '<tr><td colspan="5" class="loading-cell">보유 중인 가상 포지션 없음</td></tr>';
+    } else {
+      openBody.innerHTML = open.map(p => `
+        <tr>
+          <td>${p.symbol}</td>
+          <td>${p.entryDate}</td>
+          <td class="num">${formatNumber(p.entryPrice)}</td>
+          <td class="num">${p.peakRate !== undefined ? (p.peakRate * 100).toFixed(2) + '%' : '—'}</td>
+          <td><button class="refresh-btn" style="font-size:0.7rem;padding:2px 8px"
+            onclick="closePaperPosition(${p.id})">청산</button></td>
+        </tr>
+      `).join('');
+    }
+
+    // 거래 기록
+    const histBody = document.getElementById('ptHistoryBody');
+    const hist = (s.closedPositions || []).slice(0, 20);
+    if (hist.length === 0) {
+      histBody.innerHTML = '<tr><td colspan="5" class="loading-cell">거래 기록 없음</td></tr>';
+    } else {
+      histBody.innerHTML = hist.map(p => {
+        const retPct = p.returnRate !== null && p.returnRate !== undefined
+          ? (p.returnRate * 100).toFixed(2) + '%' : '—';
+        const cls = p.returnRate > 0 ? 'up' : p.returnRate < 0 ? 'down' : '';
+        return `
+          <tr>
+            <td>${p.symbol}</td>
+            <td>${p.entryDate}</td>
+            <td>${p.exitDate ?? '—'}</td>
+            <td class="num"><span class="rate-tag ${cls}">${retPct}</span></td>
+            <td><span style="font-size:0.75rem;opacity:0.7">${p.exitReason ?? '—'}</span></td>
+          </tr>
+        `;
+      }).join('');
+    }
+  } catch (err) {
+    console.warn('페이퍼 트레이딩 요약 로드 실패', err);
+  }
+}
+
+async function closePaperPosition(id) {
+  if (!confirm(`포지션 #${id}을 수동 청산할까요?`)) return;
+  try {
+    await fetch(`/api/paper/close/${id}`, { method: 'POST' });
+    await loadPaperSummary();
+  } catch (err) {
+    alert('청산 실패: ' + err.message);
+  }
+}
+
+document.getElementById('runPaperBtn').addEventListener('click', async () => {
+  document.getElementById('runPaperBtn').textContent = '실행 중…';
+  try {
+    const result = await fetch('/api/paper/run', { method: 'POST' }).then(r => r.json());
+    alert(`완료\n매수: ${result.bought?.join(', ') || '없음'}\n매도: ${result.sold?.join(', ') || '없음'}`);
+    await loadPaperSummary();
+  } catch (err) {
+    alert('실행 실패: ' + err.message);
+  } finally {
+    document.getElementById('runPaperBtn').textContent = '▶ 지금 실행';
+  }
+});
+
 loadAll();
+loadPaperSummary();

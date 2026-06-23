@@ -26,6 +26,7 @@ public class TradeSignal {
     private Integer score;
     private Integer scoreThreshold;
     private BigDecimal trailingStopPrice;
+    private BigDecimal changeRate; // 현재 평단 대비 수익률 (evaluateForSell 응답에서 채워짐)
     private List<String> matchedConditions;
     private List<String> excludedReasons;
     private String summary;

@@ -205,83 +205,61 @@ public class TradeSignalService {
         // 3.1 손절 - 최우선, 예외 없음
         if (changeRate.compareTo(STOP_LOSS_RATE) <= 0) {
             return TradeSignal.builder()
-                    .symbol(symbol)
-                    .signalType(SignalType.SELL_STOP_LOSS)
-                    .currentPrice(currentPrice)
+                    .symbol(symbol).signalType(SignalType.SELL_STOP_LOSS)
+                    .currentPrice(currentPrice).changeRate(changeRate)
                     .matchedConditions(List.of("3.1 손절 기준 도달 (" + percentString(changeRate) + ")"))
                     .summary("손절 신호: 평단가 대비 " + percentString(changeRate))
                     .build();
         }
-
-        // 3.4 시간 기반 강제매도: 5거래일 초과 + 트레일링 한 번도 미발동 시 예외없이 매도 (v2.1)
+        // 3.4 시간 기반 강제매도
         if (holdingDays != null && holdingDays > 5 && !trailingEverTriggered) {
             return TradeSignal.builder()
-                    .symbol(symbol)
-                    .signalType(SignalType.SELL_TREND_REVERSAL)
-                    .currentPrice(currentPrice)
+                    .symbol(symbol).signalType(SignalType.SELL_TREND_REVERSAL)
+                    .currentPrice(currentPrice).changeRate(changeRate)
                     .matchedConditions(List.of("3.4 보유 " + holdingDays + "거래일 초과 + 트레일링 미발동 - 시간 기반 강제매도"))
                     .summary("시간 기반 강제매도: " + holdingDays + "거래일 경과, 트레일링 미발동")
                     .build();
         }
-
-        // 3.2 트레일링 스탑: 3.4 보정에 따라 시작 임계값(trailingStartThreshold) 자체를 기준으로 구간을 산출한다.
-        // 4일째 이후 미발동 상태면 시작 기준이 1.5%로 낮아지므로, 트레일링 구간표(+3%p 간격)도 그 시작점부터 다시 계산한다.
+        // 3.2 트레일링 스탑
         BigDecimal trailingStopRate = calculateTrailingStopRate(effectivePeakRate, trailingStartThreshold);
         BigDecimal trailingStopPrice = trailingStopRate == null
                 ? null
                 : avgPrice.multiply(BigDecimal.ONE.add(trailingStopRate)).setScale(2, RoundingMode.HALF_UP);
-
-        if (trailingStopRate != null && changeRate.compareTo(trailingStopRate) < 0
-                && trailingEverTriggered) {
+        if (trailingStopRate != null && changeRate.compareTo(trailingStopRate) < 0 && trailingEverTriggered) {
             return TradeSignal.builder()
-                    .symbol(symbol)
-                    .signalType(SignalType.SELL_TAKE_PROFIT)
-                    .currentPrice(currentPrice)
-                    .trailingStopPrice(trailingStopPrice)
-                    .matchedConditions(List.of(
-                            "3.2 트레일링 스탑 발동 (최고 " + percentString(effectivePeakRate)
-                                    + " → 기준선 " + percentString(trailingStopRate)
-                                    + " 하회, 현재 " + percentString(changeRate) + ")"
-                    ))
+                    .symbol(symbol).signalType(SignalType.SELL_TAKE_PROFIT)
+                    .currentPrice(currentPrice).changeRate(changeRate).trailingStopPrice(trailingStopPrice)
+                    .matchedConditions(List.of("3.2 트레일링 스탑 발동 (최고 " + percentString(effectivePeakRate)
+                            + " → 기준선 " + percentString(trailingStopRate) + " 하회, 현재 " + percentString(changeRate) + ")"))
                     .summary("트레일링 스탑 매도 신호")
                     .build();
         }
-
         // 3.3 추세 전환
         if (closes.size() >= EMA_LONG + 1) {
             List<BigDecimal> emaShortSeries = TechnicalIndicatorCalculator.emaSeries(closes, EMA_SHORT);
-            List<BigDecimal> emaLongSeries = TechnicalIndicatorCalculator.emaSeries(closes, EMA_LONG);
+            List<BigDecimal> emaLongSeries  = TechnicalIndicatorCalculator.emaSeries(closes, EMA_LONG);
             if (isDeadCross(emaShortSeries, emaLongSeries)) {
                 return TradeSignal.builder()
-                        .symbol(symbol)
-                        .signalType(SignalType.SELL_TREND_REVERSAL)
-                        .currentPrice(currentPrice)
+                        .symbol(symbol).signalType(SignalType.SELL_TREND_REVERSAL)
+                        .currentPrice(currentPrice).changeRate(changeRate)
                         .matchedConditions(List.of("3.3 데드크로스 발생"))
-                        .summary("추세전환 매도 신호: 데드크로스")
-                        .build();
+                        .summary("추세전환 매도 신호: 데드크로스").build();
             }
         }
-
         BigDecimal recentLow = TechnicalIndicatorCalculator.recentLow(lows, BREAKOUT_LOOKBACK);
         if (recentLow != null && currentPrice.compareTo(recentLow) < 0) {
             return TradeSignal.builder()
-                    .symbol(symbol)
-                    .signalType(SignalType.SELL_TREND_REVERSAL)
-                    .currentPrice(currentPrice)
+                    .symbol(symbol).signalType(SignalType.SELL_TREND_REVERSAL)
+                    .currentPrice(currentPrice).changeRate(changeRate)
                     .matchedConditions(List.of("3.3 직전 " + BREAKOUT_LOOKBACK + "일 최저가 하향 돌파"))
-                    .summary("추세전환 매도 신호: 최근 저점 하향 돌파")
-                    .build();
+                    .summary("추세전환 매도 신호: 최근 저점 하향 돌파").build();
         }
-
         return TradeSignal.builder()
-                .symbol(symbol)
-                .signalType(SignalType.HOLD)
-                .currentPrice(currentPrice)
-                .trailingStopPrice(trailingStopPrice)
+                .symbol(symbol).signalType(SignalType.HOLD)
+                .currentPrice(currentPrice).changeRate(changeRate).trailingStopPrice(trailingStopPrice)
                 .summary("보유 유지: 평단가 대비 " + percentString(changeRate)
                         + (trailingEverTriggered && trailingStopRate != null
-                            ? " (트레일링 스탑 기준선 " + percentString(trailingStopRate) + ")"
-                            : ""))
+                        ? " (트레일링 스탑 기준선 " + percentString(trailingStopRate) + ")" : ""))
                 .build();
     }
 

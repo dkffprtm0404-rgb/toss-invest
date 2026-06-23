@@ -126,6 +126,38 @@
     </div>
   </section>
 
+  <!-- 페이퍼 트레이딩 패널 -->
+  <section class="panel paper-panel">
+    <div class="panel-head">
+      <span class="panel-eyebrow">05 — PAPER TRADING</span>
+      <h2>페이퍼 트레이딩</h2>
+      <button id="runPaperBtn" class="refresh-btn" style="margin-left:auto">▶ 지금 실행</button>
+    </div>
+
+    <div class="paper-summary" id="paperSummary">
+      <div class="summary-row"><span class="summary-label">총 거래수</span><span class="summary-value" id="ptTotalTrades">—</span></div>
+      <div class="summary-row"><span class="summary-label">승률</span><span class="summary-value" id="ptWinRate">—</span></div>
+      <div class="summary-row"><span class="summary-label">평균 수익률</span><span class="summary-value" id="ptAvgReturn">—</span></div>
+      <div class="summary-row"><span class="summary-label">누적 수익률</span><span class="summary-value" id="ptCumReturn">—</span></div>
+    </div>
+
+    <div class="paper-section">
+      <span class="quote-block-label">보유 중 (OPEN)</span>
+      <table class="holdings-table" id="ptOpenTable">
+        <thead><tr><th>종목</th><th>매수일</th><th class="num">매수가</th><th class="num">현재 peakRate</th><th></th></tr></thead>
+        <tbody id="ptOpenBody"><tr><td colspan="5" class="loading-cell">없음</td></tr></tbody>
+      </table>
+    </div>
+
+    <div class="paper-section" style="margin-top:1.2rem">
+      <span class="quote-block-label">최근 거래 기록</span>
+      <table class="holdings-table" id="ptHistoryTable">
+        <thead><tr><th>종목</th><th>매수일</th><th>청산일</th><th class="num">수익률</th><th>청산사유</th></tr></thead>
+        <tbody id="ptHistoryBody"><tr><td colspan="5" class="loading-cell">없음</td></tr></tbody>
+      </table>
+    </div>
+  </section>
+
   <footer class="foot-note">
     <span id="lastUpdated">최초 호출 전</span>
     <button id="refreshBtn" class="refresh-btn">REFRESH</button>
