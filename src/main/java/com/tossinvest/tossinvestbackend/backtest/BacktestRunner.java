@@ -24,43 +24,43 @@ public class BacktestRunner {
     private final BacktestEngine engine;
     private final CandleRepository candleRepository;
 
-    /**
-     * 전체 그리드서치 실행. 종목별 캔들은 미리 DB에서 한 번씩만 로드해 재사용한다(지표 재계산 비용 절감 목적은
-     * 아니고 - 그리드 조합마다 지표를 다시 계산하긴 하지만 - 최소한 DB 조회/엔티티 변환 비용은 한 번만 든다).
-     */
+    private static final int MIN_CANDLES = 100; // 캔들 100개 미만 종목 제외 (데이터 부족)
+    private static final int MIN_TRADES  = 10;  // 거래 10건 미만은 통계 의미 없음
+
     public GridSearchReport runFullGrid(List<String> symbols) {
         long startTime = System.currentTimeMillis();
         List<BacktestParams> grid = BacktestParamGrid.generate();
-        log.info("[그리드서치] 시작: 종목 {}개 x 파라미터 {}개 = {}회 시뮬레이션", symbols.size(), grid.size(), symbols.size() * grid.size());
+        log.info("[그리드서치] 시작: 종목 {}개 x 파라미터 {}개 = {}회 시뮬레이션",
+                symbols.size(), grid.size(), symbols.size() * grid.size());
 
         Map<String, List<CandleEntity>> candlesBySymbol = symbols.stream()
                 .collect(Collectors.toMap(s -> s, candleRepository::findBySymbolOrderByTimestampAsc));
 
-        // 종목당 지표를 한 번만 사전계산 (648개 파라미터 조합 전체에서 재사용)
-        Map<String, BacktestEngine.PrecomputedIndicators> indicatorsBySymbol = candlesBySymbol.entrySet().stream()
-                .filter(e -> e.getValue().size() >= 21)
+        // MIN_CANDLES 이상인 종목만 사전계산 (데이터 부족 종목 자동 제외)
+        Map<String, BacktestEngine.PrecomputedIndicators> indMap = candlesBySymbol.entrySet().stream()
+                .filter(e -> e.getValue().size() >= MIN_CANDLES)
                 .collect(Collectors.toMap(Map.Entry::getKey, e -> engine.precompute(e.getValue())));
 
-        List<ParamGroupResult> paramResults = new ArrayList<>();
+        log.info("[그리드서치] 유효 종목 {}개 (캔들 {}개 이상)", indMap.size(), MIN_CANDLES);
 
+        List<ParamGroupResult> paramResults = new ArrayList<>();
         for (BacktestParams params : grid) {
-            List<BacktestResult> perSymbolResults = new ArrayList<>();
-            for (String symbol : symbols) {
-                BacktestEngine.PrecomputedIndicators ind = indicatorsBySymbol.get(symbol);
-                if (ind == null) continue;
-                perSymbolResults.add(engine.runWithIndicators(symbol, ind, params));
+            List<BacktestResult> perSymbol = new ArrayList<>();
+            for (String symbol : indMap.keySet()) {
+                perSymbol.add(engine.runWithIndicators(symbol, indMap.get(symbol), params));
             }
-            paramResults.add(aggregate(params, perSymbolResults));
+            paramResults.add(aggregate(params, perSymbol));
         }
 
-        BacktestResult baselinePerSymbol = null; // 참고용, 리포트에서는 grid 내 baseline 라벨로 찾음
+        // best: 총거래 MIN_TRADES 이상 조합 중 샤프비율 최고 (샤프가 가장 신뢰도 높은 지표)
         ParamGroupResult best = paramResults.stream()
-                .filter(p -> p.totalTrades >= 5) // 거래수가 너무 적으면 통계적으로 의미 없음
-                .max(Comparator.comparing(p -> p.avgWinRate.add(p.avgProfitFactor)))
+                .filter(p -> p.totalTrades >= MIN_TRADES)
+                .max(Comparator.comparing(p -> p.avgSharpe))
                 .orElse(null);
 
         long elapsedMs = System.currentTimeMillis() - startTime;
-        log.info("[그리드서치] 완료: {}ms 소요, 최적조합 거래수={}", elapsedMs, best != null ? best.totalTrades : -1);
+        log.info("[그리드서치] 완료: {}ms, best 거래수={}, best샤프={}",
+                elapsedMs, best != null ? best.totalTrades : -1, best != null ? best.avgSharpe : "-");
 
         return new GridSearchReport(paramResults, best, symbols, elapsedMs);
     }

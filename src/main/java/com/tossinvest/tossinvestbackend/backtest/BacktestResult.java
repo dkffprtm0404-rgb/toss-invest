@@ -54,8 +54,9 @@ public class BacktestResult {
                 .reduce(BigDecimal.ZERO, BigDecimal::add);
         BigDecimal totalLoss = trades.stream().map(t -> t.returnRate).filter(rr -> rr.signum() < 0)
                 .reduce(BigDecimal.ZERO, BigDecimal::add).abs();
+        // 손실이 없는 경우(완전 우연) profitFactor=999로 치환하면 집계 평균이 튀므로 3.0으로 cap
         r.profitFactor = totalLoss.signum() == 0
-                ? (totalProfit.signum() > 0 ? BigDecimal.valueOf(999) : BigDecimal.ZERO)
+                ? (totalProfit.signum() > 0 ? BigDecimal.valueOf(3.0) : BigDecimal.ZERO)
                 : totalProfit.divide(totalLoss, 4, RoundingMode.HALF_UP);
 
         // MDD: 거래 순서대로 누적수익률 곡선을 그렸을 때의 최대 낙폭

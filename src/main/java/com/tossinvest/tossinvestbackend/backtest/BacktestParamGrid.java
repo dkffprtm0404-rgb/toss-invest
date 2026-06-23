@@ -90,4 +90,21 @@ public final class BacktestParamGrid {
     public static BacktestParams baseline() {
         return BacktestParams.builder().build();
     }
+
+    /**
+     * 그리드서치 결과로 도출된 최적 파라미터 조합.
+     * 변경 근거: 샤프/손익비 기준 단변량 분석 + topBySharpe 1위 조합 교차 확인.
+     * - 점수임계값 5→4: 샤프 +0.014, 손익비 +0.052 (명확한 개선)
+     * - 청산기간 5→10일: 샤프 +0.009, 손익비 +0.034 (완만한 상승 종목 보호)
+     * - 갭상승 필터 10→15%: 샤프 +0.003 (작지만 일관된 개선)
+     * - 손절 -2% 유지: topBySharpe 1위 조합이 -2%를 선택, -3%는 거래수는 많지만 질이 낮음
+     * - 가중치 2-1-3-2 유지: 대안(1-2-4-3) 샤프 -0.0496으로 명백히 나쁨
+     */
+    public static BacktestParams optimal() {
+        return BacktestParams.builder()
+                .buyScoreThreshold(4)
+                .timeExitHoldingDays(10)
+                .gapUpInvalidateRate(BigDecimal.valueOf(0.15))
+                .build();
+    }
 }

@@ -69,6 +69,47 @@ public class BacktestController {
         return engine.run(symbol, candles, BacktestParamGrid.baseline());
     }
 
+    /** 단일 종목 + 그리드서치 최적 파라미터로 실행해 베이스라인과 직접 비교. */
+    @GetMapping("/run-optimal")
+    public BacktestResult runOptimalForSymbol(@RequestParam String symbol) {
+        List<CandleEntity> candles = candleRepository.findBySymbolOrderByTimestampAsc(symbol);
+        return engine.run(symbol, candles, BacktestParamGrid.optimal());
+    }
+
+    /** 전체 유니버스 베이스라인 vs 최적값 비교 요약. */
+    @GetMapping("/compare")
+    public Map<String, Object> compare() {
+        Map<String, Object> result = new java.util.LinkedHashMap<>();
+        List<String> symbols = BacktestUniverse.all();
+        Map<String, List<CandleEntity>> candleMap = symbols.stream()
+                .filter(s -> candleRepository.countBySymbol(s) >= 100)
+                .collect(java.util.stream.Collectors.toMap(s -> s, candleRepository::findBySymbolOrderByTimestampAsc));
+
+        BacktestParams baseline = BacktestParamGrid.baseline();
+        BacktestParams optimal  = BacktestParamGrid.optimal();
+
+        double bWinSum = 0, bSharpeSum = 0, bPFSum = 0;
+        double oWinSum = 0, oSharpeSum = 0, oPFSum = 0;
+        int bTotal = 0, oTotal = 0;
+
+        for (Map.Entry<String, List<CandleEntity>> e : candleMap.entrySet()) {
+            BacktestResult b = engine.run(e.getKey(), e.getValue(), baseline);
+            BacktestResult o = engine.run(e.getKey(), e.getValue(), optimal);
+            bTotal += b.getTotalTrades(); bWinSum += b.getWinRate().doubleValue() * b.getTotalTrades();
+            bSharpeSum += b.getSharpeRatio().doubleValue(); bPFSum += b.getProfitFactor().doubleValue();
+            oTotal += o.getTotalTrades(); oWinSum += o.getWinRate().doubleValue() * o.getTotalTrades();
+            oSharpeSum += o.getSharpeRatio().doubleValue(); oPFSum += o.getProfitFactor().doubleValue();
+        }
+        int n = candleMap.size();
+        result.put("baseline", Map.of("totalTrades", bTotal, "avgWinRate", bTotal > 0 ? bWinSum/bTotal : 0,
+                "avgSharpe", bSharpeSum/n, "avgProfitFactor", bPFSum/n));
+        result.put("optimal",  Map.of("totalTrades", oTotal, "avgWinRate", oTotal > 0 ? oWinSum/oTotal : 0,
+                "avgSharpe", oSharpeSum/n, "avgProfitFactor", oPFSum/n));
+        result.put("optimalParams", Map.of("buyScoreThreshold", 4, "timeExitHoldingDays", 10, "gapUpInvalidateRate", 0.15,
+                "stopLossRate", -0.02, "weightA", 2, "weightB", 1, "weightC", 3, "weightD", 2));
+        return result;
+    }
+
     /**
      * before 날짜 직접 지정 테스트용 디버그 엔드포인트.
      * before는 "YYYY-MM-DD" 형식 (예: "2025-06-01").
