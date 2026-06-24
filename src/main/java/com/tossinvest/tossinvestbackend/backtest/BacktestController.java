@@ -19,6 +19,7 @@ public class BacktestController {
     private final CandleRepository candleRepository;
     private final BacktestEngine engine;
     private final MarketDataService marketDataService;
+    private final BacktestUniverse universe;
 
     /**
      * pykrx로 생성한 CSV를 읽어 DB에 적재한다.
@@ -38,7 +39,7 @@ public class BacktestController {
     @PostMapping("/collect")
     public Map<String, Integer> collectCandles(@RequestParam(defaultValue = "650") int targetDays) {
         Map<String, Integer> result = new java.util.LinkedHashMap<>();
-        for (String symbol : BacktestUniverse.all()) {
+        for (String symbol : universe.all()) {
             int collected = collectionService.collectDailyCandles(symbol, targetDays);
             result.put(symbol, collected);
         }
@@ -49,7 +50,7 @@ public class BacktestController {
     @GetMapping("/candle-status")
     public Map<String, Long> candleStatus() {
         Map<String, Long> result = new java.util.LinkedHashMap<>();
-        for (String symbol : BacktestUniverse.all()) {
+        for (String symbol : universe.all()) {
             result.put(symbol, candleRepository.countBySymbol(symbol));
         }
         return result;
@@ -58,7 +59,7 @@ public class BacktestController {
     /** 전체 그리드서치 실행. 시간이 걸릴 수 있으므로 동기 호출이며 완료 후 결과를 반환한다. */
     @PostMapping("/run")
     public BacktestReportView runGrid() {
-        BacktestRunner.GridSearchReport report = runner.runFullGrid(BacktestUniverse.all());
+        BacktestRunner.GridSearchReport report = runner.runFullGrid(universe.all());
         return BacktestReportView.from(report);
     }
 
@@ -80,7 +81,7 @@ public class BacktestController {
     @GetMapping("/compare")
     public Map<String, Object> compare() {
         Map<String, Object> result = new java.util.LinkedHashMap<>();
-        List<String> symbols = BacktestUniverse.all();
+        List<String> symbols = universe.all();
         Map<String, List<CandleEntity>> candleMap = symbols.stream()
                 .filter(s -> candleRepository.countBySymbol(s) >= 100)
                 .collect(java.util.stream.Collectors.toMap(s -> s, candleRepository::findBySymbolOrderByTimestampAsc));

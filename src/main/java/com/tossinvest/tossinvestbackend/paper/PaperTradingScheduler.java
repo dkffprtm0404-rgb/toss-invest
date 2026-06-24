@@ -20,6 +20,7 @@ import java.time.LocalDate;
 public class PaperTradingScheduler {
 
     private final PaperTradingService paperTradingService;
+    private final BacktestUniverse universe;
 
     /** 매일 15:35 (KST) 실행. 주말이면 스킵. */
     @Scheduled(cron = "0 35 15 * * MON-FRI", zone = "Asia/Seoul")
@@ -30,7 +31,7 @@ public class PaperTradingScheduler {
         }
         log.info("[페이퍼 스케줄러] {} 일일 실행 시작", today);
         try {
-            PaperTradingService.DailyRunResult result = paperTradingService.runDaily(BacktestUniverse.all());
+            PaperTradingService.DailyRunResult result = paperTradingService.runDaily(universe.all());
             log.info("[페이퍼 스케줄러] 완료 - 매수: {}, 매도: {}, 보유유지: {}",
                     result.bought(), result.sold(), result.held().size());
         } catch (Exception e) {

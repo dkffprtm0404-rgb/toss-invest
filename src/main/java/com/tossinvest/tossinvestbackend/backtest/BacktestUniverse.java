@@ -1,38 +1,47 @@
 package com.tossinvest.tossinvestbackend.backtest;
 
+import org.springframework.stereotype.Component;
+
 import java.util.List;
 
 /**
  * 백테스트 및 페이퍼 트레이딩 대상 종목 유니버스.
- * 보유 종목(005930, 102940) 포함 + 시가총액/업종 다양성 고려.
- * 폐지/데이터없음 종목(091990, 950160)은 제거됨.
+ * scripts/fetch_candles.py로 수집한 종목들을 DB에서 동적으로 읽어온다.
+ * 고정 리스트 대신 캔들 데이터가 충분한(MIN_CANDLES 이상) 종목을 자동으로 포함한다.
+ *
+ * 제외 종목:
+ * - 102940(코오롱생명과학): 개인 보유종목, 별도 관리
+ * - 091990(셀트리온헬스케어): 2024년 합병으로 심볼 폐지
+ * - 950160(코오롱티슈진): 데이터 없음
  */
-public final class BacktestUniverse {
+@Component
+public class BacktestUniverse {
 
-    private BacktestUniverse() {}
+    private static final int MIN_CANDLES = 100;
+    private static final List<String> EXCLUDE = List.of("102940", "091990", "950160");
 
-    /** 코스피 종목 (대형주 중심) */
-    public static final List<String> KOSPI_SYMBOLS = List.of(
-            "005930", // 삼성전자
-            "000660", // SK하이닉스
-            "005380", // 현대차
-            "051910", // LG화학
-            "035420", // NAVER
-            "012330"  // 현대모비스
-    );
+    private final CandleRepository candleRepository;
 
-    /** 코스닥 종목 (중소형주, 기존 보유종목 포함) */
-    public static final List<String> KOSDAQ_SYMBOLS = List.of(
-            "102940", // 코오롱생명과학 (보유종목)
-            "086520", // 에코프로
-            "247540"  // 에코프로비엠
-            // 091990(셀트리온헬스케어): 2024년 셀트리온 합병으로 심볼 폐지 → 제거
-            // 950160(코오롱티슈진): 캔들 데이터 없어 제거
-    );
+    public BacktestUniverse(CandleRepository candleRepository) {
+        this.candleRepository = candleRepository;
+    }
 
-    public static List<String> all() {
-        List<String> combined = new java.util.ArrayList<>(KOSPI_SYMBOLS);
-        combined.addAll(KOSDAQ_SYMBOLS);
-        return combined;
+    /** DB에 캔들 데이터가 충분히 있는 종목 전체 반환 */
+    public List<String> all() {
+        return candleRepository.findAll().stream()
+                .map(CandleEntity::getSymbol)
+                .distinct()
+                .filter(s -> !EXCLUDE.contains(s))
+                .filter(s -> candleRepository.countBySymbol(s) >= MIN_CANDLES)
+                .sorted()
+                .toList();
+    }
+
+    /** 하위 호환용 정적 메서드 (기존 코드에서 BacktestUniverse.all() 직접 호출하던 곳) */
+    public static List<String> defaultSymbols() {
+        return List.of(
+            "005930","000660","005380","051910","035420","012330",
+            "086520","247540"
+        );
     }
 }

@@ -13,11 +13,12 @@ public class PaperTradingController {
 
     private final PaperTradingService service;
     private final PaperPositionRepository repo;
+    private final BacktestUniverse universe;
 
     /** 수동 트리거 - 지금 즉시 신호 평가 및 가상 매매 실행 */
     @PostMapping("/run")
     public PaperTradingService.DailyRunResult runNow() {
-        return service.runDaily(BacktestUniverse.all());
+        return service.runDaily(universe.all());
     }
 
     /** 포트폴리오 요약 (대시보드 메인용) */
