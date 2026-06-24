@@ -3,8 +3,9 @@ package com.tossinvest.tossinvestbackend.backtest;
 import java.util.List;
 
 /**
- * 백테스트 대상 종목 유니버스. 코스피/코스닥 대표 종목으로 시장 대표성을 확보한다.
- * 보유 종목(005930, 102940) 포함 + 시가총액/업종 다양성을 고려해 구성했다.
+ * 백테스트 및 페이퍼 트레이딩 대상 종목 유니버스.
+ * 보유 종목(005930, 102940) 포함 + 시가총액/업종 다양성 고려.
+ * 폐지/데이터없음 종목(091990, 950160)은 제거됨.
  */
 public final class BacktestUniverse {
 
@@ -22,10 +23,11 @@ public final class BacktestUniverse {
 
     /** 코스닥 종목 (중소형주, 기존 보유종목 포함) */
     public static final List<String> KOSDAQ_SYMBOLS = List.of(
-            "950160", // 코오롱티슈진
+            "102940", // 코오롱생명과학 (보유종목)
             "086520", // 에코프로
-            "247540", // 에코프로비엠
-            "091990"  // 셀트리온헬스케어
+            "247540"  // 에코프로비엠
+            // 091990(셀트리온헬스케어): 2024년 셀트리온 합병으로 심볼 폐지 → 제거
+            // 950160(코오롱티슈진): 캔들 데이터 없어 제거
     );
 
     public static List<String> all() {
