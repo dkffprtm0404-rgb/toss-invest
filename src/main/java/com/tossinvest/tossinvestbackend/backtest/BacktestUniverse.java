@@ -26,13 +26,10 @@ public class BacktestUniverse {
         this.candleRepository = candleRepository;
     }
 
-    /** DB에 캔들 데이터가 충분히 있는 종목 전체 반환 */
+    /** DB에 캔들 데이터가 MIN_CANDLES 이상 있는 종목 전체 반환 */
     public List<String> all() {
-        return candleRepository.findAll().stream()
-                .map(CandleEntity::getSymbol)
-                .distinct()
+        return candleRepository.findSymbolsWithMinCandles(MIN_CANDLES).stream()
                 .filter(s -> !EXCLUDE.contains(s))
-                .filter(s -> candleRepository.countBySymbol(s) >= MIN_CANDLES)
                 .sorted()
                 .toList();
     }
