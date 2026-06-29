@@ -85,8 +85,9 @@ public class PaperTradingService {
             }
         }
         if (!toSave.isEmpty()) repo.saveAll(toSave);
-        log.info("[페이퍼] 완료: 매수 {}건, 매도 {}건, 보유유지 {}건", bought.size(), sold.size(), held.size());
-        return new DailyRunResult(bought, sold, held);
+        log.info("[페이퍼] 완료: 매수 {}건, 매도 {}건, 보유유지 {}건 (평가종목 {}개)",
+                bought.size(), sold.size(), held.size(), symbols.size());
+        return new DailyRunResult(bought, sold, held, symbols.size());
     }
 
     private boolean isStrategyOn() {
@@ -117,7 +118,7 @@ public class PaperTradingService {
         return new PortfolioSummary(openList, closedList, total, winRate, avgRet, cumRet);
     }
 
-    public record DailyRunResult(List<String> bought, List<String> sold, List<String> held) {}
+    public record DailyRunResult(List<String> bought, List<String> sold, List<String> held, int universeSize) {}
     public record PortfolioSummary(List<PaperPosition> openPositions, List<PaperPosition> closedPositions,
                                     int totalTrades, double winRate, double avgReturn, double cumReturn) {}
 }

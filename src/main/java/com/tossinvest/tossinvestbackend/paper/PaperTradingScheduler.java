@@ -6,36 +6,49 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
 
-import java.time.DayOfWeek;
 import java.time.LocalDate;
+import java.time.LocalDateTime;
 
-/**
- * 페이퍼 트레이딩 자동 스케줄러.
- * 매 거래일(월~금) 15:35에 신호를 평가하고 가상 포지션을 업데이트한다.
- * 공휴일은 별도 처리 없음 (API 호출이 실패해도 로그로만 기록하고 넘어감).
- */
 @Component
 @RequiredArgsConstructor
 @Slf4j
 public class PaperTradingScheduler {
 
     private final PaperTradingService paperTradingService;
+    private final PaperRunLogRepository logRepo;
     private final BacktestUniverse universe;
 
-    /** 매일 15:35 (KST) 실행. 주말이면 스킵. */
     @Scheduled(cron = "0 35 15 * * MON-FRI", zone = "Asia/Seoul")
     public void runDaily() {
-        LocalDate today = LocalDate.now();
-        if (today.getDayOfWeek() == DayOfWeek.SATURDAY || today.getDayOfWeek() == DayOfWeek.SUNDAY) {
-            return;
-        }
-        log.info("[페이퍼 스케줄러] {} 일일 실행 시작", today);
+        log.info("[페이퍼 스케줄러] {} 15:35 자동 실행 시작", LocalDate.now());
+        saveAndRun("SCHEDULER");
+    }
+
+    public PaperTradingService.DailyRunResult runManual() {
+        return saveAndRun("MANUAL");
+    }
+
+    private PaperTradingService.DailyRunResult saveAndRun(String trigger) {
         try {
             PaperTradingService.DailyRunResult result = paperTradingService.runDaily(universe.all());
-            log.info("[페이퍼 스케줄러] 완료 - 매수: {}, 매도: {}, 보유유지: {}",
-                    result.bought(), result.sold(), result.held().size());
+            logRepo.save(PaperRunLog.builder()
+                    .runDate(LocalDate.now())
+                    .runAt(LocalDateTime.now())
+                    .universeSizez(result.universeSize())
+                    .boughtCount(result.bought().size())
+                    .soldCount(result.sold().size())
+                    .heldCount(result.held().size())
+                    .boughtSymbols(String.join(",", result.bought()))
+                    .soldSymbols(String.join(",", result.sold()))
+                    .trigger(trigger)
+                    .build());
+            log.info("[페이퍼 {}] 종목 {}개 평가 | 매수:{} 매도:{} 보유:{}",
+                    trigger, result.universeSize(),
+                    result.bought().size(), result.sold().size(), result.held().size());
+            return result;
         } catch (Exception e) {
-            log.error("[페이퍼 스케줄러] 실행 중 에러: {}", e.getMessage(), e);
+            log.error("[페이퍼 {}] 실행 실패: {}", trigger, e.getMessage(), e);
+            throw e;
         }
     }
 }

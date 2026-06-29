@@ -6,6 +6,8 @@ import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
 
+import java.util.List;
+
 @RestController
 @RequestMapping("/api/paper")
 @RequiredArgsConstructor
@@ -13,12 +15,20 @@ public class PaperTradingController {
 
     private final PaperTradingService service;
     private final PaperPositionRepository repo;
+    private final PaperRunLogRepository logRepo;
     private final BacktestUniverse universe;
+    private final PaperTradingScheduler scheduler;
 
-    /** 수동 트리거 - 지금 즉시 신호 평가 및 가상 매매 실행 */
+    /** 수동 트리거 - 로그 기록 포함 */
     @PostMapping("/run")
     public PaperTradingService.DailyRunResult runNow() {
-        return service.runDaily(universe.all());
+        return scheduler.runManual();
+    }
+
+    /** 실행 로그 (최근 30회) - 신호 없는 날도 기록됨 */
+    @GetMapping("/logs")
+    public List<PaperRunLog> logs() {
+        return logRepo.findTop30ByOrderByRunAtDesc();
     }
 
     /** 포트폴리오 요약 (대시보드 메인용) */
