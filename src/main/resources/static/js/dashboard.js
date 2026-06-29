@@ -516,3 +516,67 @@ document.getElementById('runPaperBtn').addEventListener('click', async () => {
 
 loadAll();
 loadPaperSummary();
+
+// ── 1분봉 단타 시뮬레이션 ──────────────────────────────────────────────────
+async function loadScalpingStats() {
+  try {
+    const s = await fetchJson('/api/scalping/stats');
+    document.getElementById('scTotalTrades').textContent = s.totalTrades;
+    document.getElementById('scWinRate').textContent = (s.winRate * 100).toFixed(1) + '%';
+    document.getElementById('scCumReturn').textContent = (s.cumReturn * 100).toFixed(2) + '%';
+    document.getElementById('scOpenCount').textContent = (s.openPositions || []).length + '개';
+
+    const openBody = document.getElementById('scOpenBody');
+    const open = s.openPositions || [];
+    openBody.innerHTML = open.length === 0
+      ? '<tr><td colspan="4" class="loading-cell">보유 없음</td></tr>'
+      : open.map(p => `
+          <tr>
+            <td>${p.symbol}</td>
+            <td>${p.entryTime ? p.entryTime.substring(11,16) : '—'}</td>
+            <td class="num">${formatNumber(p.entryPrice)}</td>
+            <td class="num" style="font-size:0.75rem">
+              ${p.ema5AtEntry ? p.ema5AtEntry.toFixed(0) : '—'} /
+              ${p.ema20AtEntry ? p.ema20AtEntry.toFixed(0) : '—'}
+            </td>
+          </tr>`).join('');
+
+    const histBody = document.getElementById('scHistoryBody');
+    const hist = (s.closedPositions || []).slice(0, 30);
+    histBody.innerHTML = hist.length === 0
+      ? '<tr><td colspan="5" class="loading-cell">기록 없음</td></tr>'
+      : hist.map(p => {
+          const ret = p.returnRate != null ? (p.returnRate * 100).toFixed(2) + '%' : '—';
+          const cls = p.returnRate > 0 ? 'up' : p.returnRate < 0 ? 'down' : '';
+          const entryT = p.entryTime ? p.entryTime.substring(5,16) : '—';
+          const exitT  = p.exitTime  ? p.exitTime.substring(11,16) : '—';
+          return `<tr>
+            <td>${p.symbol}</td>
+            <td>${entryT}</td>
+            <td>${exitT}</td>
+            <td class="num"><span class="rate-tag ${cls}">${ret}</span></td>
+            <td style="font-size:0.75rem;opacity:0.7">${p.exitReason || '—'}</td>
+          </tr>`;
+        }).join('');
+  } catch(err) {
+    console.warn('스캘핑 stats 로드 실패', err);
+  }
+}
+
+document.getElementById('scalpTickBtn').addEventListener('click', async () => {
+  document.getElementById('scalpTickBtn').textContent = '스캔 중…';
+  try {
+    const r = await fetch('/api/scalping/tick', { method: 'POST' }).then(res => res.json());
+    if (r.bought?.length || r.sold?.length) {
+      alert(`스캘핑 결과\n매수: ${r.bought?.join(', ') || '없음'}\n매도: ${r.sold?.join(', ') || '없음'}`);
+    }
+    await loadScalpingStats();
+  } catch(err) {
+    alert('스캔 실패: ' + err.message);
+  } finally {
+    document.getElementById('scalpTickBtn').textContent = '▶ 지금 스캔';
+  }
+});
+
+loadScalpingStats();
+setInterval(loadScalpingStats, 60 * 1000);

@@ -24,6 +24,67 @@ public class PaperTradingService {
     private final TradeSignalService signalService;
     private static final int THREADS = 10;
 
+    /**
+     * 보유 포지션만 현재가 조회 후 매도 조건 체크 (중간 모니터링용).
+     * 정규장 5분 간격, NXT장 10분 간격으로 호출된다.
+     * 신규 매수 판단은 하지 않는다.
+     */
+    @Transactional
+    public List<String> monitorOpenPositions() {
+        List<PaperPosition> openPositions = repo.findByStatus("OPEN");
+        if (openPositions.isEmpty()) return List.of();
+
+        List<String> sold = new ArrayList<>();
+        List<PaperPosition> toSave = new ArrayList<>();
+
+        ExecutorService ex = Executors.newFixedThreadPool(Math.min(openPositions.size(), THREADS));
+        Map<String, Future<TradeSignal>> futures = new LinkedHashMap<>();
+
+        for (PaperPosition pos : openPositions) {
+            int holdingDays = (int)(LocalDate.now().toEpochDay() - pos.getEntryDate().toEpochDay());
+            futures.put(pos.getSymbol(), ex.submit(() ->
+                    signalService.evaluateForSell(pos.getSymbol(), pos.getEntryPrice(), pos.getPeakRate(), holdingDays)));
+        }
+        ex.shutdown();
+        try { ex.awaitTermination(60, TimeUnit.SECONDS); } catch (InterruptedException ignored) {}
+
+        Map<String, PaperPosition> posMap = openPositions.stream()
+                .collect(Collectors.toMap(PaperPosition::getSymbol, p -> p));
+
+        for (Map.Entry<String, Future<TradeSignal>> entry : futures.entrySet()) {
+            String symbol = entry.getKey();
+            try {
+                TradeSignal sig = entry.getValue().get();
+                if (sig == null) continue;
+                PaperPosition pos = posMap.get(symbol);
+
+                // peakRate 갱신
+                if (sig.getChangeRate() != null && sig.getChangeRate().compareTo(pos.getPeakRate()) > 0)
+                    pos.setPeakRate(sig.getChangeRate());
+
+                if (sig.getSignalType() != SignalType.HOLD) {
+                    pos.setStatus("CLOSED");
+                    pos.setExitDate(LocalDate.now());
+                    pos.setExitPrice(sig.getCurrentPrice());
+                    BigDecimal ret = sig.getCurrentPrice().subtract(pos.getEntryPrice())
+                            .divide(pos.getEntryPrice(), 6, RoundingMode.HALF_UP);
+                    pos.setReturnRate(ret);
+                    pos.setExitReason(sig.getSignalType().name() + "_INTRADAY");
+                    toSave.add(pos);
+                    sold.add(symbol + "(" + String.format("%+.2f%%", ret.doubleValue() * 100) + ")");
+                    log.info("[페이퍼 중간모니터] 매도: {} @ {} ({}) {:.2f}%",
+                            symbol, sig.getCurrentPrice(), sig.getSignalType(), ret.doubleValue() * 100);
+                } else {
+                    toSave.add(pos); // peakRate 갱신 저장
+                }
+            } catch (Exception e) {
+                log.warn("[페이퍼 중간모니터] {} 에러: {}", symbol, e.getMessage());
+            }
+        }
+        if (!toSave.isEmpty()) repo.saveAll(toSave);
+        return sold;
+    }
+
     @Transactional
     public DailyRunResult runDaily(List<String> symbols) {
         List<String> bought = new ArrayList<>(), sold = new ArrayList<>(), held = new ArrayList<>();

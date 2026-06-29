@@ -161,6 +161,41 @@
     </div>
   </section>
 
+  <!-- 1분봉 단타 시뮬레이션 패널 -->
+  <section class="panel paper-panel">
+    <div class="panel-head">
+      <span class="panel-eyebrow">06 — SCALPING SIM (1분봉)</span>
+      <h2>단타 시뮬레이션 <small style="font-size:0.7rem;opacity:0.6">코스피 TOP10 · 목표+2/3% · 손절-0.6%</small></h2>
+      <button id="scalpTickBtn" class="refresh-btn" style="margin-left:auto">▶ 지금 스캔</button>
+    </div>
+    <p style="font-size:0.78rem;opacity:0.6;margin:0 0 0.8rem 0">
+      ⚡ 매 1분 자동 실행 (09:01~15:20) — 골든크로스 + 거래량 1.5배 조건
+    </p>
+
+    <div class="paper-summary" id="scalpSummary">
+      <div class="summary-row"><span class="summary-label">총 거래수</span><span class="summary-value" id="scTotalTrades">—</span></div>
+      <div class="summary-row"><span class="summary-label">승률</span><span class="summary-value" id="scWinRate">—</span></div>
+      <div class="summary-row"><span class="summary-label">누적 수익률</span><span class="summary-value" id="scCumReturn">—</span></div>
+      <div class="summary-row"><span class="summary-label">현재 보유</span><span class="summary-value" id="scOpenCount">—</span></div>
+    </div>
+
+    <div class="paper-section">
+      <span class="quote-block-label">보유 중 (OPEN)</span>
+      <table class="holdings-table">
+        <thead><tr><th>종목</th><th>진입시간</th><th class="num">진입가</th><th class="num">EMA5/20</th></tr></thead>
+        <tbody id="scOpenBody"><tr><td colspan="4" class="loading-cell">없음</td></tr></tbody>
+      </table>
+    </div>
+
+    <div class="paper-section" style="margin-top:1.2rem">
+      <span class="quote-block-label">최근 거래 기록</span>
+      <table class="holdings-table">
+        <thead><tr><th>종목</th><th>진입</th><th>청산</th><th class="num">수익률</th><th>청산사유</th></tr></thead>
+        <tbody id="scHistoryBody"><tr><td colspan="5" class="loading-cell">없음</td></tr></tbody>
+      </table>
+    </div>
+  </section>
+
   <footer class="foot-note">
     <span id="lastUpdated">최초 호출 전</span>
     <button id="refreshBtn" class="refresh-btn">REFRESH</button>

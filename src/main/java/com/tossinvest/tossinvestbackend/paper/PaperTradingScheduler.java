@@ -8,6 +8,8 @@ import org.springframework.stereotype.Component;
 
 import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.time.LocalTime;
+import java.util.List;
 
 @Component
 @RequiredArgsConstructor
@@ -22,6 +24,32 @@ public class PaperTradingScheduler {
     public void runDaily() {
         log.info("[페이퍼 스케줄러] {} 15:35 자동 실행 시작", LocalDate.now());
         saveAndRun("SCHEDULER");
+    }
+
+    /**
+     * 정규장 중 5분 간격 보유 포지션 모니터링 (09:00~15:20).
+     * 손절/트레일링 스탑 조건 충족 시 즉시 가상 매도.
+     */
+    @Scheduled(cron = "0 0/5 9-15 * * MON-FRI", zone = "Asia/Seoul")
+    public void monitorIntraday() {
+        LocalTime now = LocalTime.now();
+        // 09:00~15:20 사이만 실행
+        if (now.isBefore(LocalTime.of(9, 0)) || now.isAfter(LocalTime.of(15, 20))) return;
+        List<String> sold = paperTradingService.monitorOpenPositions();
+        if (!sold.isEmpty()) log.info("[페이퍼 정규장 모니터] 매도: {}", sold);
+    }
+
+    /**
+     * NXT장 10분 간격 보유 포지션 모니터링 (15:40~20:00).
+     * 거래 불가 구간(15:30~15:39) 제외.
+     */
+    @Scheduled(cron = "0 0/10 15-20 * * MON-FRI", zone = "Asia/Seoul")
+    public void monitorNxt() {
+        LocalTime now = LocalTime.now();
+        // 15:40~20:00 사이만 실행 (15:30~15:39 거래불가 구간 제외)
+        if (now.isBefore(LocalTime.of(15, 40)) || now.isAfter(LocalTime.of(20, 0))) return;
+        List<String> sold = paperTradingService.monitorOpenPositions();
+        if (!sold.isEmpty()) log.info("[페이퍼 NXT 모니터] 매도: {}", sold);
     }
 
     public PaperTradingService.DailyRunResult runManual() {

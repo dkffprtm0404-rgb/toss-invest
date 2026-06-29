@@ -74,8 +74,11 @@ public class TossApiClient {
                         response.bodyToMono(String.class).defaultIfEmpty("(empty body)")
                                 .flatMap(body -> {
                                     log.warn("[TossApiClient] {} 응답 - 요청: {}, 바디: {}", response.statusCode(), uriFunction, body);
-                                    return reactor.core.publisher.Mono.error(new RuntimeException(
-                                            "토스 API " + response.statusCode() + " 응답 바디: " + body));
+                                    // 429 Too Many Requests: Rate Limit 에러임을 명시
+                                    String msg = response.statusCode().value() == 429
+                                            ? "토스 API Rate Limit 초과 (429): " + body
+                                            : "토스 API " + response.statusCode() + " 응답 바디: " + body;
+                                    return reactor.core.publisher.Mono.error(new RuntimeException(msg));
                                 }))
                 .bodyToMono(responseType)
                 .block();
