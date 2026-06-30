@@ -28,14 +28,14 @@ public class PaperTradingScheduler {
 
     /**
      * 정규장 중 5분 간격 보유 포지션 모니터링 (09:00~15:20).
-     * 손절/트레일링 스탑 조건 충족 시 즉시 가상 매도.
+     * 손절/트레일링 스탑 조건 충족 시 즉시 가상 매도. 신호 없어도 로그를 남긴다(동작여부 확인용).
      */
     @Scheduled(cron = "0 0/5 9-15 * * MON-FRI", zone = "Asia/Seoul")
     public void monitorIntraday() {
         LocalTime now = LocalTime.now();
-        // 09:00~15:20 사이만 실행
         if (now.isBefore(LocalTime.of(9, 0)) || now.isAfter(LocalTime.of(15, 20))) return;
         List<String> sold = paperTradingService.monitorOpenPositions();
+        saveMonitorLog("INTRADAY_MONITOR", sold);
         if (!sold.isEmpty()) log.info("[페이퍼 정규장 모니터] 매도: {}", sold);
     }
 
@@ -46,10 +46,24 @@ public class PaperTradingScheduler {
     @Scheduled(cron = "0 0/10 15-20 * * MON-FRI", zone = "Asia/Seoul")
     public void monitorNxt() {
         LocalTime now = LocalTime.now();
-        // 15:40~20:00 사이만 실행 (15:30~15:39 거래불가 구간 제외)
         if (now.isBefore(LocalTime.of(15, 40)) || now.isAfter(LocalTime.of(20, 0))) return;
         List<String> sold = paperTradingService.monitorOpenPositions();
+        saveMonitorLog("NXT_MONITOR", sold);
         if (!sold.isEmpty()) log.info("[페이퍼 NXT 모니터] 매도: {}", sold);
+    }
+
+    private void saveMonitorLog(String trigger, List<String> sold) {
+        logRepo.save(PaperRunLog.builder()
+                .runDate(LocalDate.now())
+                .runAt(LocalDateTime.now())
+                .universeSizez(0) // 모니터링은 보유종목만 대상이라 전체 유니버스 크기는 의미 없음
+                .boughtCount(0)
+                .soldCount(sold.size())
+                .heldCount(0)
+                .boughtSymbols("")
+                .soldSymbols(String.join(",", sold))
+                .trigger(trigger)
+                .build());
     }
 
     public PaperTradingService.DailyRunResult runManual() {

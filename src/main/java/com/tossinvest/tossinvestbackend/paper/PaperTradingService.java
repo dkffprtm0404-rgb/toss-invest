@@ -22,7 +22,45 @@ public class PaperTradingService {
 
     private final PaperPositionRepository repo;
     private final TradeSignalService signalService;
+    private final com.tossinvest.tossinvestbackend.marketdata.MarketDataService marketDataService;
     private static final int THREADS = 10;
+
+    /**
+     * 수동 청산. 현재가를 실시간 조회해 정확한 returnRate/exitDate/exitPrice를 기록한다.
+     */
+    @Transactional
+    public PaperPosition closeManually(Long id) {
+        PaperPosition pos = repo.findById(id).orElseThrow(
+                () -> new IllegalArgumentException("포지션을 찾을 수 없음: id=" + id));
+
+        if ("CLOSED".equals(pos.getStatus())) {
+            return pos; // 이미 청산됨, 중복 처리 방지
+        }
+
+        BigDecimal currentPrice;
+        try {
+            var priceResp = marketDataService.getPrices(pos.getSymbol());
+            currentPrice = priceResp.getResult().stream()
+                    .filter(p -> pos.getSymbol().equals(p.getSymbol()))
+                    .findFirst()
+                    .map(p -> new BigDecimal(p.getLastPrice()))
+                    .orElseThrow(() -> new IllegalStateException("현재가 조회 실패: " + pos.getSymbol()));
+        } catch (Exception e) {
+            log.error("[페이퍼] 수동청산 현재가 조회 실패: {} - {}", pos.getSymbol(), e.getMessage());
+            throw new RuntimeException("현재가 조회 실패로 청산할 수 없습니다: " + e.getMessage(), e);
+        }
+
+        BigDecimal ret = currentPrice.subtract(pos.getEntryPrice())
+                .divide(pos.getEntryPrice(), 6, RoundingMode.HALF_UP);
+
+        pos.setStatus("CLOSED");
+        pos.setExitDate(LocalDate.now());
+        pos.setExitPrice(currentPrice);
+        pos.setReturnRate(ret);
+        pos.setExitReason("MANUAL");
+        log.info("[페이퍼] 수동청산: {} @ {} (수익률 {:.2f}%)", pos.getSymbol(), currentPrice, ret.doubleValue() * 100);
+        return repo.save(pos);
+    }
 
     /**
      * 보유 포지션만 현재가 조회 후 매도 조건 체크 (중간 모니터링용).
@@ -61,6 +99,9 @@ public class PaperTradingService {
                 // peakRate 갱신
                 if (sig.getChangeRate() != null && sig.getChangeRate().compareTo(pos.getPeakRate()) > 0)
                     pos.setPeakRate(sig.getChangeRate());
+
+                // 9차 보정: B안(즉시익절 +5%) 비교용 - 처음 +5% 도달한 시점을 기록
+                recordQuick5IfReached(pos, sig.getChangeRate(), sig.getCurrentPrice(), LocalDate.now());
 
                 if (sig.getSignalType() != SignalType.HOLD) {
                     pos.setStatus("CLOSED");
@@ -120,6 +161,8 @@ public class PaperTradingService {
                     if (sig.getChangeRate() != null && sig.getChangeRate().compareTo(pos.getPeakRate()) > 0)
                         pos.setPeakRate(sig.getChangeRate());
 
+                    recordQuick5IfReached(pos, sig.getChangeRate(), sig.getCurrentPrice(), LocalDate.now());
+
                     if (sig.getSignalType() != SignalType.HOLD) {
                         pos.setStatus("CLOSED");
                         pos.setExitDate(LocalDate.now());
@@ -151,6 +194,21 @@ public class PaperTradingService {
         return new DailyRunResult(bought, sold, held, symbols.size());
     }
 
+    private static final BigDecimal QUICK5_THRESHOLD = BigDecimal.valueOf(0.05);
+
+    /**
+     * 9차 보정: B안(즉시익절 +5%) 비교 기록.
+     * 보유 기간 중 changeRate가 처음 +5%에 도달한 시점의 날짜/가격을 기록한다 (이미 기록된 경우 갱신하지 않음).
+     */
+    private void recordQuick5IfReached(PaperPosition pos, BigDecimal changeRate, BigDecimal currentPrice, LocalDate today) {
+        if (Boolean.TRUE.equals(pos.getQuick5Reached())) return; // 이미 기록됨
+        if (changeRate == null || changeRate.compareTo(QUICK5_THRESHOLD) < 0) return;
+        pos.setQuick5Reached(true);
+        pos.setQuick5ExitDate(today);
+        pos.setQuick5ExitPrice(currentPrice);
+        log.info("[페이퍼 B안비교] {} +5% 최초도달 @ {} ({})", pos.getSymbol(), currentPrice, today);
+    }
+
     private boolean isStrategyOn() {
         List<PaperPosition> closed = repo.findClosedOrderByExitDateDesc();
         if (closed.size() >= 20) {
@@ -176,10 +234,27 @@ public class PaperTradingService {
                 .mapToDouble(p -> p.getReturnRate().doubleValue()).average().orElse(0);
         double cumRet  = closedList.stream().filter(p -> p.getReturnRate() != null)
                 .mapToDouble(p -> p.getReturnRate().doubleValue()).sum();
-        return new PortfolioSummary(openList, closedList, total, winRate, avgRet, cumRet);
+
+        // B안(즉시익절 +5%) 비교 통계: +5% 도달한 거래만 대상으로 A안(실제 청산) vs B안(+5%에서 즉시청산) 비교
+        List<PaperPosition> reachedQuick5 = closedList.stream()
+                .filter(p -> Boolean.TRUE.equals(p.getQuick5Reached())).toList();
+        double avgReturnA = reachedQuick5.stream().filter(p -> p.getReturnRate() != null)
+                .mapToDouble(p -> p.getReturnRate().doubleValue()).average().orElse(0);
+        // B안 수익률은 항상 +5%(정확히는 quick5 기록 시점의 changeRate, 근사로 0.05 사용)
+        double avgReturnB = 0.05;
+        long aWonOverB = reachedQuick5.stream().filter(p -> p.getReturnRate() != null
+                && p.getReturnRate().doubleValue() > 0.05).count();
+
+        QuickCompareStats compareStats = new QuickCompareStats(
+                reachedQuick5.size(), avgReturnA, avgReturnB, aWonOverB);
+
+        return new PortfolioSummary(openList, closedList, total, winRate, avgRet, cumRet, compareStats);
     }
 
     public record DailyRunResult(List<String> bought, List<String> sold, List<String> held, int universeSize) {}
     public record PortfolioSummary(List<PaperPosition> openPositions, List<PaperPosition> closedPositions,
-                                    int totalTrades, double winRate, double avgReturn, double cumReturn) {}
+                                    int totalTrades, double winRate, double avgReturn, double cumReturn,
+                                    QuickCompareStats quick5Compare) {}
+    public record QuickCompareStats(int reachedCount, double avgReturnA_trailing, double avgReturnB_quick5,
+                                     long aWonOverBCount) {}
 }

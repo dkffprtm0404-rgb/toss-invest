@@ -447,6 +447,17 @@ async function loadPaperSummary() {
     document.getElementById('ptAvgReturn').textContent = (s.avgReturn * 100).toFixed(2) + '%';
     document.getElementById('ptCumReturn').textContent = (s.cumReturn * 100).toFixed(2) + '%';
 
+    // A/B안 비교 통계
+    if (s.quick5Compare) {
+      const q = s.quick5Compare;
+      document.getElementById('q5Count').textContent = q.reachedCount + '건';
+      document.getElementById('q5AvgA').textContent = (q.avgReturnA_trailing * 100).toFixed(2) + '%';
+      document.getElementById('q5AvgB').textContent = (q.avgReturnB_quick5 * 100).toFixed(2) + '%';
+      document.getElementById('q5AWinRate').textContent = q.reachedCount > 0
+        ? ((q.aWonOverBCount / q.reachedCount) * 100).toFixed(1) + '%'
+        : '—';
+    }
+
     // 보유 중 포지션
     const openBody = document.getElementById('ptOpenBody');
     const open = s.openPositions || [];
@@ -481,7 +492,7 @@ async function loadPaperSummary() {
             <td>${p.entryDate}</td>
             <td>${p.exitDate ?? '—'}</td>
             <td class="num"><span class="rate-tag ${cls}">${retPct}</span></td>
-            <td><span style="font-size:0.75rem;opacity:0.7">${p.exitReason ?? '—'}</span></td>
+            <td><span style="font-size:0.75rem;opacity:0.7">${exitReasonLabel(p.exitReason)}</span></td>
           </tr>
         `;
       }).join('');
@@ -489,6 +500,20 @@ async function loadPaperSummary() {
   } catch (err) {
     console.warn('페이퍼 트레이딩 요약 로드 실패', err);
   }
+}
+
+function exitReasonLabel(reason) {
+  if (!reason) return '—';
+  const map = {
+    'SELL_STOP_LOSS': '손절',
+    'SELL_TAKE_PROFIT': '트레일링 익절',
+    'SELL_TREND_REVERSAL': '추세전환',
+    'MANUAL': '수동청산',
+    'SELL_STOP_LOSS_INTRADAY': '손절(장중)',
+    'SELL_TAKE_PROFIT_INTRADAY': '트레일링 익절(장중)',
+    'SELL_TREND_REVERSAL_INTRADAY': '추세전환(장중)',
+  };
+  return map[reason] || reason;
 }
 
 async function closePaperPosition(id) {

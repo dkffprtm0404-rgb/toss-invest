@@ -49,12 +49,9 @@ public class PaperTradingController {
         return repo.findClosedOrderByExitDateDesc();
     }
 
-    /** 특정 포지션 수동 청산 (MANUAL) */
+    /** 특정 포지션 수동 청산 (MANUAL) - 현재가 조회 후 정확한 수익률/청산일 기록 */
     @PostMapping("/close/{id}")
     public PaperPosition closeManually(@PathVariable Long id) {
-        PaperPosition pos = repo.findById(id).orElseThrow();
-        pos.setStatus("CLOSED");
-        pos.setExitReason("MANUAL");
-        return repo.save(pos);
+        return service.closeManually(id);
     }
 }

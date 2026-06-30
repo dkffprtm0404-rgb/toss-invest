@@ -44,4 +44,13 @@ public class PaperPosition {
     private BigDecimal exitPrice;
     private BigDecimal returnRate;
     private String exitReason; // STOP_LOSS / TRAILING_STOP / TIME_EXIT / DEAD_CROSS / MANUAL
+
+    /**
+     * 9차 보정(MD 8장): B안(즉시익절 +5%) 비교용 가상 기록.
+     * 실제 매매(A안, 트레일링)와 별개로, "만약 +5% 도달 시 즉시 팔았다면" 시나리오를 함께 추적한다.
+     */
+    @Builder.Default
+    private Boolean quick5Reached = false;   // peakRate가 +5% 이상 도달한 적 있는지
+    private LocalDate quick5ExitDate;        // +5% 최초 도달일 (가상 청산일)
+    private BigDecimal quick5ExitPrice;      // +5% 도달 시점 가격 (가상 청산가)
 }
