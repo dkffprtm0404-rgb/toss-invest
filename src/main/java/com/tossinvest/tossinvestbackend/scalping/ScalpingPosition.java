@@ -35,6 +35,11 @@ public class ScalpingPosition {
     @Column(nullable = false)
     private String status = "OPEN";
 
+    /** 보유 중 최고 수익률 (트레일링 스탑 계산용) */
+    @Builder.Default
+    @Column(nullable = false)
+    private BigDecimal peakRate = BigDecimal.ZERO;
+
     private LocalDateTime exitTime;
     private BigDecimal exitPrice;
     private BigDecimal returnRate;
