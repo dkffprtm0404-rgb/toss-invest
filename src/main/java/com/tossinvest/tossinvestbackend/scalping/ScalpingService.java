@@ -46,9 +46,9 @@ public class ScalpingService {
     private static final int CANDLE_COUNT = 50;
     private static final int THREADS     = 5;
 
-    private static final BigDecimal VOL_MULT       = BigDecimal.valueOf(1.5);
+    private static final BigDecimal VOL_MULT       = BigDecimal.valueOf(1.2);  // 완화: 1.5→1.2
     private static final BigDecimal RSI_LOW        = BigDecimal.valueOf(30);
-    private static final BigDecimal RSI_HIGH       = BigDecimal.valueOf(50);
+    private static final BigDecimal RSI_HIGH       = BigDecimal.valueOf(65);  // 확대: 50→65
     private static final BigDecimal REBOUND_MIN    = BigDecimal.valueOf(0.005);
     private static final BigDecimal TRAILING_TRIG  = BigDecimal.valueOf(0.01);
     private static final BigDecimal TAKE_PROFIT    = BigDecimal.valueOf(0.02);
