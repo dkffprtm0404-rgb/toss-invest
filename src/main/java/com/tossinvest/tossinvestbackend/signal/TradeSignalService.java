@@ -184,6 +184,13 @@ public class TradeSignalService {
         List<BigDecimal> lows = extract(candles, CandleResponse.Candle::getLowPrice);
         BigDecimal currentPrice = closes.get(closes.size() - 1);
 
+        // 실행 실패 수정: 3.1 손절/3.2 트레일링은 "5분마다 현재가"로 판단해야 하므로
+        // 가능하면 실시간 체결가로 currentPrice를 덮어쓴다. 실시간가 조회 실패 시에만 일봉 종가로 폴백한다.
+        BigDecimal realtimePrice = getRealtimePrice(symbol);
+        if (realtimePrice != null) {
+            currentPrice = realtimePrice;
+        }
+
         BigDecimal changeRate = avgPrice.signum() == 0
                 ? BigDecimal.ZERO
                 : currentPrice.subtract(avgPrice).divide(avgPrice, 6, RoundingMode.HALF_UP);
@@ -282,6 +289,23 @@ public class TradeSignalService {
             stopLine = stopLine.add(step);
         }
         return stopLine.subtract(step);
+    }
+
+    /**
+     * 실시간 체결가 조회 (실행 실패 수정용). /api/v1/prices는 일봉과 별개 경로라 장중에도 최신가를 반환한다.
+     * 조회 실패 시 null을 반환하며, 호출부는 이 경우 일봉 종가로 폴백한다.
+     */
+    private BigDecimal getRealtimePrice(String symbol) {
+        try {
+            var priceResp = marketDataService.getPrices(symbol);
+            return priceResp.getResult().stream()
+                    .filter(p -> symbol.equals(p.getSymbol()))
+                    .findFirst()
+                    .map(p -> new BigDecimal(p.getLastPrice()))
+                    .orElse(null);
+        } catch (Exception e) {
+            return null;
+        }
     }
 
     private boolean isRsiReboundFromOversold(List<BigDecimal> closes) {

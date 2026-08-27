@@ -20,9 +20,11 @@ public class PaperTradingScheduler {
     private final PaperRunLogRepository logRepo;
     private final BacktestUniverse universe;
 
-    @Scheduled(cron = "0 35 15 * * MON-FRI", zone = "Asia/Seoul")
+    // 실행 실패 수정: 15:35엔 거래 자체가 불가능(정규장 종료~NXT 시작 사이 공백)하므로
+    // 15:40(NXT 개시)으로 옮겨 신호 계산과 실제 체결 가능 시점을 일치시킨다.
+    @Scheduled(cron = "0 40 15 * * MON-FRI", zone = "Asia/Seoul")
     public void runDaily() {
-        log.info("[페이퍼 스케줄러] {} 15:35 자동 실행 시작", LocalDate.now());
+        log.info("[페이퍼 스케줄러] {} 15:40 자동 실행 시작", LocalDate.now());
         saveAndRun("SCHEDULER");
     }
 

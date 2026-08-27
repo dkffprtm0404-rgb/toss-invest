@@ -23,7 +23,9 @@ public class PaperTradingService {
     private final PaperPositionRepository repo;
     private final TradeSignalService signalService;
     private final com.tossinvest.tossinvestbackend.marketdata.MarketDataService marketDataService;
-    private static final int THREADS = 10;
+    private static final int THREADS    = 10;
+    private static final int BATCH_SIZE = 20;   // 한 번에 20개씩 처리 (Rate Limit 방지)
+    private static final long BATCH_DELAY_MS = 1500; // 배치 간 1.5초 대기
 
     /**
      * 수동 청산. 현재가를 실시간 조회해 정확한 returnRate/exitDate/exitPrice를 기록한다.
@@ -133,65 +135,113 @@ public class PaperTradingService {
                 .collect(Collectors.toMap(PaperPosition::getSymbol, p -> p));
         boolean on = isStrategyOn();
 
-        ExecutorService ex = Executors.newFixedThreadPool(THREADS);
-        Map<String, Future<TradeSignal>> futures = new LinkedHashMap<>();
-
-        for (String sym : symbols) {
-            if (open.containsKey(sym)) {
-                PaperPosition pos = open.get(sym);
-                int days = (int)(LocalDate.now().toEpochDay() - pos.getEntryDate().toEpochDay());
-                futures.put(sym, ex.submit(() ->
-                    signalService.evaluateForSell(sym, pos.getEntryPrice(), pos.getPeakRate(), days)));
-            } else if (on) {
-                futures.put(sym, ex.submit(() -> signalService.evaluateForBuy(sym)));
-            }
-        }
-        ex.shutdown();
-        try { ex.awaitTermination(120, TimeUnit.SECONDS); } catch (InterruptedException ignored) {}
-
         List<PaperPosition> toSave = new ArrayList<>();
-        for (Map.Entry<String, Future<TradeSignal>> e : futures.entrySet()) {
-            String sym = e.getKey();
-            try {
-                TradeSignal sig = e.getValue().get();
-                if (sig == null) continue;
 
+        // 배치로 나눠서 처리 (Rate Limit 방지)
+        List<List<String>> batches = partition(symbols, BATCH_SIZE);
+        for (int b = 0; b < batches.size(); b++) {
+            List<String> batch = batches.get(b);
+            ExecutorService ex = Executors.newFixedThreadPool(Math.min(batch.size(), THREADS));
+            Map<String, Future<TradeSignal>> futures = new LinkedHashMap<>();
+
+            for (String sym : batch) {
                 if (open.containsKey(sym)) {
                     PaperPosition pos = open.get(sym);
-                    if (sig.getChangeRate() != null && sig.getChangeRate().compareTo(pos.getPeakRate()) > 0)
-                        pos.setPeakRate(sig.getChangeRate());
-
-                    recordQuick5IfReached(pos, sig.getChangeRate(), sig.getCurrentPrice(), LocalDate.now());
-
-                    if (sig.getSignalType() != SignalType.HOLD) {
-                        pos.setStatus("CLOSED");
-                        pos.setExitDate(LocalDate.now());
-                        pos.setExitPrice(sig.getCurrentPrice());
-                        BigDecimal ret = sig.getCurrentPrice().subtract(pos.getEntryPrice())
-                                .divide(pos.getEntryPrice(), 6, RoundingMode.HALF_UP);
-                        pos.setReturnRate(ret);
-                        pos.setExitReason(sig.getSignalType().name());
-                        toSave.add(pos);
-                        sold.add(sym + "(" + String.format("%.2f%%", ret.doubleValue() * 100) + ")");
-                        log.info("[페이퍼] 매도: {} @ {} ({})", sym, sig.getCurrentPrice(), sig.getSignalType());
-                    } else {
-                        held.add(sym);
-                    }
-                } else if (sig.getSignalType() == SignalType.BUY_CANDIDATE) {
-                    PaperPosition pos = PaperPosition.builder()
-                            .symbol(sym).entryDate(LocalDate.now()).entryPrice(sig.getCurrentPrice()).build();
-                    toSave.add(pos);
-                    bought.add(sym + "@" + sig.getCurrentPrice());
-                    log.info("[페이퍼] 매수: {} @ {}", sym, sig.getCurrentPrice());
+                    int days = (int)(LocalDate.now().toEpochDay() - pos.getEntryDate().toEpochDay());
+                    futures.put(sym, ex.submit(() ->
+                            signalService.evaluateForSell(sym, pos.getEntryPrice(), pos.getPeakRate(), days)));
+                } else if (on) {
+                    futures.put(sym, ex.submit(() -> signalService.evaluateForBuy(sym)));
                 }
-            } catch (Exception err) {
-                log.warn("[페이퍼] {} 에러: {}", sym, err.getMessage());
+            }
+            ex.shutdown();
+            try { ex.awaitTermination(60, TimeUnit.SECONDS); } catch (InterruptedException ignored) {}
+
+            for (Map.Entry<String, Future<TradeSignal>> e : futures.entrySet()) {
+                String sym = e.getKey();
+                try {
+                    TradeSignal sig = e.getValue().get();
+                    if (sig == null) continue;
+
+                    if (open.containsKey(sym)) {
+                        PaperPosition pos = open.get(sym);
+
+                        // peakRate 갱신 — changeRate가 null이면 currentPrice로 직접 계산
+                        BigDecimal changeRate = sig.getChangeRate();
+                        if (changeRate == null && sig.getCurrentPrice() != null) {
+                            changeRate = sig.getCurrentPrice().subtract(pos.getEntryPrice())
+                                    .divide(pos.getEntryPrice(), 6, RoundingMode.HALF_UP);
+                        }
+                        if (changeRate != null && changeRate.compareTo(pos.getPeakRate()) > 0)
+                            pos.setPeakRate(changeRate);
+
+                        recordQuick5IfReached(pos, changeRate, sig.getCurrentPrice(), LocalDate.now());
+
+                        if (sig.getSignalType() != SignalType.HOLD) {
+                            pos.setStatus("CLOSED");
+                            pos.setExitDate(LocalDate.now());
+                            pos.setExitPrice(sig.getCurrentPrice());
+                            BigDecimal ret = sig.getCurrentPrice().subtract(pos.getEntryPrice())
+                                    .divide(pos.getEntryPrice(), 6, RoundingMode.HALF_UP);
+                            pos.setReturnRate(ret);
+                            pos.setExitReason(sig.getSignalType().name());
+                            toSave.add(pos);
+                            sold.add(sym + "(" + String.format("%.2f%%", ret.doubleValue() * 100) + ")");
+                            log.info("[페이퍼] 매도: {} @ {} ({})", sym, sig.getCurrentPrice(), sig.getSignalType());
+                        } else {
+                            held.add(sym);
+                            toSave.add(pos); // peakRate 갱신 저장
+                        }
+                    } else if (sig.getSignalType() == SignalType.BUY_CANDIDATE) {
+                        // 실행 실패 수정: 신호는 15:30 종가 기준이지만 실제 체결은 15:40(NXT) 이후에만 가능하므로,
+                        // 진입가는 신호 시점 종가가 아니라 실행 시점 실시간가로 기록한다. 조회 실패 시에만 종가로 폴백.
+                        BigDecimal entryPrice = getRealtimeEntryPrice(sym, sig.getCurrentPrice());
+                        PaperPosition pos = PaperPosition.builder()
+                                .symbol(sym).entryDate(LocalDate.now()).entryPrice(entryPrice).build();
+                        toSave.add(pos);
+                        bought.add(sym + "@" + entryPrice);
+                        log.info("[페이퍼] 매수: {} @ {} (신호가 {})", sym, entryPrice, sig.getCurrentPrice());
+                    }
+                } catch (Exception err) {
+                    log.warn("[페이퍼] {} 에러: {}", sym, err.getMessage());
+                }
+            }
+
+            // 배치 간 대기 (마지막 배치는 대기 없음)
+            if (b < batches.size() - 1) {
+                try { Thread.sleep(BATCH_DELAY_MS); } catch (InterruptedException ignored) {}
             }
         }
+
         if (!toSave.isEmpty()) repo.saveAll(toSave);
-        log.info("[페이퍼] 완료: 매수 {}건, 매도 {}건, 보유유지 {}건 (평가종목 {}개)",
-                bought.size(), sold.size(), held.size(), symbols.size());
+        log.info("[페이퍼] 완료: 매수 {}건, 매도 {}건, 보유유지 {}건 (평가종목 {}개, 배치 {}회)",
+                bought.size(), sold.size(), held.size(), symbols.size(), batches.size());
         return new DailyRunResult(bought, sold, held, symbols.size());
+    }
+
+    /**
+     * 실행 시점(15:40 이후) 실시간 체결가 조회. 실패 시 신호 계산에 쓰인 종가(fallback)로 대체한다.
+     */
+    private BigDecimal getRealtimeEntryPrice(String symbol, BigDecimal fallback) {
+        try {
+            var priceResp = marketDataService.getPrices(symbol);
+            return priceResp.getResult().stream()
+                    .filter(p -> symbol.equals(p.getSymbol()))
+                    .findFirst()
+                    .map(p -> new BigDecimal(p.getLastPrice()))
+                    .orElse(fallback);
+        } catch (Exception e) {
+            log.warn("[페이퍼] {} 실시간 진입가 조회 실패, 종가로 폴백: {}", symbol, e.getMessage());
+            return fallback;
+        }
+    }
+
+    /** 리스트를 size 크기의 배치로 분할 */
+    private static <T> List<List<T>> partition(List<T> list, int size) {
+        List<List<T>> result = new ArrayList<>();
+        for (int i = 0; i < list.size(); i += size)
+            result.add(list.subList(i, Math.min(i + size, list.size())));
+        return result;
     }
 
     private static final BigDecimal QUICK5_THRESHOLD = BigDecimal.valueOf(0.05);
