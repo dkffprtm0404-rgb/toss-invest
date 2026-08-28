@@ -42,13 +42,13 @@ public class PaperTradingScheduler {
     }
 
     /**
-     * NXT장 10분 간격 보유 포지션 모니터링 (15:40~20:00).
-     * 거래 불가 구간(15:30~15:39) 제외.
+     * NXT장 10분 간격 보유 포지션 모니터링 (15:50~20:00).
+     * 15:40은 runDaily(신규매수+보유포지션 매도 판단 포함)와 겹치므로 제외하고 15:50부터 시작한다.
      */
     @Scheduled(cron = "0 0/10 15-20 * * MON-FRI", zone = "Asia/Seoul")
     public void monitorNxt() {
         LocalTime now = LocalTime.now();
-        if (now.isBefore(LocalTime.of(15, 40)) || now.isAfter(LocalTime.of(20, 0))) return;
+        if (now.isBefore(LocalTime.of(15, 50)) || now.isAfter(LocalTime.of(20, 0))) return;
         List<String> sold = paperTradingService.monitorOpenPositions();
         saveMonitorLog("NXT_MONITOR", sold);
         if (!sold.isEmpty()) log.info("[페이퍼 NXT 모니터] 매도: {}", sold);
