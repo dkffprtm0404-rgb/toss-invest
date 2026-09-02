@@ -7,7 +7,7 @@ import org.springframework.stereotype.Component;
 
 /**
  * 1분봉 단타 자동 폴링 스케줄러.
- * 장중(09:01 ~ 15:35) 매 1분마다 실행한다.
+ * 장중(09:01 ~ 15:40) 매 1분마다 실행한다.
  * 장 외 시간 체크는 ScalpingService.tick() 내부에서 수행한다.
  */
 @Component

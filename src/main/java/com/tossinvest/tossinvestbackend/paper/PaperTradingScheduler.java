@@ -20,7 +20,7 @@ public class PaperTradingScheduler {
     private final PaperRunLogRepository logRepo;
     private final BacktestUniverse universe;
 
-    // 실행 실패 수정: 15:35엔 거래 자체가 불가능(정규장 종료~NXT 시작 사이 공백)하므로
+    // 실행 실패 수정: 15:40엔 거래 자체가 불가능(정규장 종료~NXT 시작 사이 공백)하므로
     // 15:40(NXT 개시)으로 옮겨 신호 계산과 실제 체결 가능 시점을 일치시킨다.
     @Scheduled(cron = "0 40 15 * * MON-FRI", zone = "Asia/Seoul")
     public void runDaily() {
