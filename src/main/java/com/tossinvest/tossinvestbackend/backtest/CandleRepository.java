@@ -9,6 +9,8 @@ public interface CandleRepository extends JpaRepository<CandleEntity, CandleEnti
 
     List<CandleEntity> findBySymbolOrderByTimestampAsc(String symbol);
 
+    List<CandleEntity> findBySymbolAndTimestampLessThanOrderByTimestampAsc(String symbol, long endExclusive);
+
     long countBySymbol(String symbol);
 
     List<CandleEntity> findTop1BySymbolOrderByTimestampAsc(String symbol);

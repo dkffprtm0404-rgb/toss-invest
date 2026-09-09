@@ -1,0 +1,25 @@
+{
+  "symbol": "005930",
+  "startDate": "2024-01-01",
+  "endDate": "2025-12-31",
+  "executionMode": "NEXT_DAY_OPEN",
+  "strategy": {
+    "schemaVersion": 1,
+    "name": "SMA 5/20 골든크로스 + 5% 손절",
+    "originalPrompt": "SMA 5일선이 20일선을 상향 돌파하면 매수하고 5% 손실이면 손절",
+    "entry": {
+      "conditions": [
+        {
+          "type": "MA_CROSS",
+          "averageType": "SMA",
+          "shortPeriod": 5,
+          "longPeriod": 20,
+          "direction": "UP"
+        }
+      ]
+    },
+    "risk": {
+      "stopLoss": { "rate": -0.05 }
+    }
+  }
+}
