@@ -8,8 +8,11 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
+import java.time.DayOfWeek;
+import java.time.Instant;
 import java.time.LocalDate;
 import java.time.OffsetDateTime;
+import java.time.ZoneId;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.HashSet;
@@ -33,19 +36,27 @@ public class CandleCollectionService {
     private static final int PAGE_SIZE = 200;
     private static final int DAYS_PER_PAGE = 300; // 달력일 기준 (휴일/주말 포함해서 넉넉하게)
     private static final int MAX_PAGES = 15;       // 최대 15페이지 ≈ 12년치
+    private static final ZoneId KST = ZoneId.of("Asia/Seoul");
 
     private final MarketDataService marketDataService;
     private final CandleRepository candleRepository;
 
     /**
      * 종목의 일봉 캔들을 targetDays 거래일만큼 수집해 DB에 저장한다.
-     * 이미 충분히 있으면 스킵. 반환값: 신규 저장된 캔들 개수.
+     * "이미 개수가 충분하면 스킵"이 아니라 "가장 최근 캔들이 오늘-1 기준 최근 영업일 것이면 스킵"으로 판단한다.
+     * (개수 기준 스킵은 데이터가 특정 날짜에서 멈춰도 영원히 재수집이 안 되는 문제가 있었음)
+     * 반환값: 신규 저장된 캔들 개수.
      */
     @Transactional
     public int collectDailyCandles(String symbol, int targetDays) {
         long existingCount = candleRepository.countBySymbol(symbol);
-        if (existingCount >= targetDays) {
-            log.info("[캔들수집] {} 이미 {}개 보유 (목표 {}개) - 스킵", symbol, existingCount, targetDays);
+        LocalDate expectedLatest = expectedLatestTradingDate();
+        List<CandleEntity> latest = candleRepository.findTop1BySymbolOrderByTimestampDesc(symbol);
+        boolean isFresh = !latest.isEmpty() && !epochToKstDate(latest.get(0).getTimestamp()).isBefore(expectedLatest);
+
+        if (isFresh && existingCount >= targetDays) {
+            log.info("[캔들수집] {} 이미 최신({}) + {}개 보유 (목표 {}개) - 스킵",
+                    symbol, epochToKstDate(latest.get(0).getTimestamp()), existingCount, targetDays);
             return 0;
         }
 
@@ -101,9 +112,38 @@ public class CandleCollectionService {
             candleRepository.saveAll(collected);
         }
 
+        trimToWindow(symbol, targetDays);
+
         log.info("[캔들수집] {} 완료: 신규 {}개 저장, 총 보유 {}개",
                 symbol, collected.size(), existingCount + collected.size());
         return collected.size();
+    }
+
+    /** targetDays(영업일) 롤링 윈도우를 벗어난 과거 캔들을 정리해 항상 "최근 targetDays개"만 유지한다. */
+    private void trimToWindow(String symbol, int targetDays) {
+        List<CandleEntity> desc = candleRepository.findBySymbolOrderByTimestampDesc(symbol);
+        if (desc.size() > targetDays) {
+            List<CandleEntity> old = desc.subList(targetDays, desc.size());
+            candleRepository.deleteAll(old);
+            log.info("[캔들수집] {} 윈도우 초과분 {}개 정리 ({}개 → {}개)", symbol, old.size(), desc.size(), targetDays);
+        }
+    }
+
+    /** epoch millis(토스 캔들 timestamp) → KST 기준 날짜 */
+    private LocalDate epochToKstDate(Long epochMillis) {
+        return Instant.ofEpochMilli(epochMillis).atZone(KST).toLocalDate();
+    }
+
+    /**
+     * "오늘-1"을 기준으로 가장 최근 영업일(주말 제외)을 계산한다.
+     * 공휴일까지는 고려하지 않으므로 명절/임시공휴일 다음날엔 하루 정도 오차가 있을 수 있음.
+     */
+    private LocalDate expectedLatestTradingDate() {
+        LocalDate d = LocalDate.now(KST).minusDays(1);
+        while (d.getDayOfWeek() == DayOfWeek.SATURDAY || d.getDayOfWeek() == DayOfWeek.SUNDAY) {
+            d = d.minusDays(1);
+        }
+        return d;
     }
 
     private CandleEntity toEntity(String symbol, CandleResponse.Candle c, Long ts) {

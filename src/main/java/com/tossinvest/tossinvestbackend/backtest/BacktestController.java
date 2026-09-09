@@ -15,6 +15,7 @@ public class BacktestController {
 
     private final CandleCollectionService collectionService;
     private final CandleCsvImportService csvImportService;
+    private final CandleCollectionScheduler collectionScheduler;
     private final BacktestRunner runner;
     private final CandleRepository candleRepository;
     private final BacktestEngine engine;
@@ -55,6 +56,17 @@ public class BacktestController {
         }
         return result;
     }
+
+    /**
+     * 매일 21:00에 자동 실행되는 캔들 롤링 윈도우 갱신을 즉시 수동으로 실행한다.
+     * 종목 하나가 실패(레이트리밋/페이지네이션 오류 등)해도 나머지는 계속 진행된다.
+     */
+    @PostMapping("/refresh-daily")
+    public Map<String, Integer> refreshDaily() {
+        int newCandles = collectionScheduler.runManual();
+        return Map.of("newCandles", newCandles);
+    }
+
 
     /** 전체 그리드서치 실행. 시간이 걸릴 수 있으므로 동기 호출이며 완료 후 결과를 반환한다. */
     @PostMapping("/run")
