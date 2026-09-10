@@ -5,6 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>포트폴리오 대시보드</title>
 <link rel="stylesheet" href="/css/dashboard.css">
+<link rel="stylesheet" href="/css/strategy-workbench.css">
 </head>
 <body>
 <div class="grain"></div>
@@ -22,6 +23,10 @@
 </header>
 
 <main class="layout">
+
+  <section id="strategyWorkbench" aria-label="자연어 전략 작성과 백테스트">
+    <noscript>전략 작업 화면은 JavaScript가 필요합니다. 브라우저에서 JavaScript를 활성화해 주세요.</noscript>
+  </section>
 
   <!-- 환율 스트립 -->
   <section class="fx-strip" id="fxStrip">
@@ -215,5 +220,6 @@
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.js"></script>
 <script src="/js/dashboard.js"></script>
+<script src="/js/strategy-workbench.js"></script>
 </body>
 </html>

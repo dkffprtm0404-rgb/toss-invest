@@ -4,6 +4,8 @@
 
 `POST /api/backtest/run-strategy`는 사용자 전략과 실행 설정을 받아 **DB에 저장된 일봉**으로 실행한다. 외부 시세 수집이나 주문을 호출하지 않는다. 기존 `/run`, `/run-baseline`, `/run-optimal`, `/compare`는 기존 점수제 방식으로 유지된다.
 
+4단계에서 추가한 전략 버전 저장·실행 이력 조회는 [저장 API 안내](strategy-persistence.md)를 따른다. 이 문서의 직접 실행 API는 이력을 저장하지 않는다.
+
 ## 실행 예제
 
 [골든크로스·5% 손절 요청 JSON](examples/golden-cross-backtest.json)의 이동평균 종류·기간·종목·기간·체결 방식은 예제를 위한 명시적 선택값이다. 자연어에서 생략한 값의 자동 기본값이 아니다.
@@ -104,7 +106,7 @@ RSI:
 
 ## 응답 해석
 
-- `execution`: 입력 전략과 종목·기간·체결 방식의 스냅샷. 아직 DB 이력 저장은 아니다.
+- `execution`: 입력 전략과 종목·기간·체결 방식의 스냅샷. 이 직접 실행 경로는 DB 이력을 저장하지 않는다.
 - `status`: `NO_DATA`(요청 구간 일봉 없음), `INSUFFICIENT_DATA`(구간 내 진입 조건 준비 불가), `NO_TRADES`(판정 가능하지만 주문·포지션·완료 거래 없음), `COMPLETED`.
 - `candleCount`: 요청 구간 봉 수. `warmupBars`: 시작일 이전 읽은 봉 수. `requiredWarmupBars`: 진입 조건 준비에 필요한 최소 이전 봉 수(AND 최대, OR 최소). 실제 준비 여부는 지표 유효값도 검사한다.
 - `actualStartDate`, `actualEndDate`: 요청 구간에서 실제 사용한 첫·마지막 데이터 날짜.
