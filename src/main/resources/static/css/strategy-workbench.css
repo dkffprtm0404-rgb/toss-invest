@@ -13,6 +13,9 @@
 #strategyWorkbench .sw-muted { color: #a8b3a8; font-size: 13px; }
 #strategyWorkbench .sw-notice { min-height: 26px; color: #abd5b9; overflow-wrap: anywhere; }
 #strategyWorkbench .sw-error { color: #ffb4a7; }
+#strategyWorkbench .sw-list-row { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; min-width: 0; }
+#strategyWorkbench .sw-list-row > button:first-child { flex: 1 1 220px; }
+#strategyWorkbench button.sw-danger { color: #ffb4a7; border-color: #8d514b; }
 #strategyWorkbench .sw-controls { min-width: 0; border: 0; padding: 0; margin: 0; }
 #strategyWorkbench .sw-block { padding: 24px 0; border-top: 1px solid #364038; min-width: 0; }
 #strategyWorkbench .sw-field { display: flex; flex-direction: column; gap: 6px; margin-bottom: 12px; font-size: 13px; min-width: 0; }

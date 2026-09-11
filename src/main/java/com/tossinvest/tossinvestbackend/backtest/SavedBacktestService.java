@@ -57,6 +57,8 @@ public class SavedBacktestService {
     public RunDetail run(long strategyId, RunRequest request) {
         if (request == null) throw new StrategyJson.InvalidRequestException();
         SavedStrategyService.requirePositive(request.version(), "version");
+        // Serialize execution with strategy update/deletion so no run is saved against a removed version.
+        strategies.requireForUpdate(strategyId);
         var revision = strategies.versionEntity(strategyId, request.version());
         var strategy = strategies.view(revision);
         var execution = new UserStrategyBacktestRequest(strategy.strategy(), request.symbol(), request.startDate(),
@@ -84,6 +86,11 @@ public class SavedBacktestService {
         var snapshot = new Snapshot(1, "USER_STRATEGY_DAILY_V1", capturedAt, strategy, execution, data, costs, result, error);
         var saved = runs.save(new SavedBacktestEntity(revision, capturedAt, status, json.write(snapshot)));
         return new RunDetail(saved.getId(), saved.getCreatedAt(), saved.getStatus(), snapshot);
+    }
+
+    @Transactional
+    public void delete(long id) {
+        if (runs.deleteRun(id) == 0) throw new SavedStrategyService.NotFoundException("Backtest run not found.");
     }
 
     public RunDetail get(long id) {

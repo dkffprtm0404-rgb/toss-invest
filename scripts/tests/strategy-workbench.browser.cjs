@@ -16,7 +16,7 @@ test('browser completes explicit save and run flow, locks edits, preserves missi
   try {
     const page = await browser.newPage();
     const errors = []; page.on('pageerror', error => errors.push(error.message));
-    const requests = []; let hasSaved = false; let hasRun = false;
+    const requests = []; let hasSaved = false; let hasRun = false; let failDelete = true;
     const snapshot = { schemaVersion: 1, engineVersion: 'USER_STRATEGY_DAILY_V1', strategy: saved,
       execution: { strategy, symbol: '005930', startDate: '2025-01-01', endDate: '2025-12-31', executionMode: 'NEXT_DAY_OPEN' },
       data: { source: 'LOCAL_CANDLE_CACHE', interval: '1d', timezone: 'Asia/Seoul', sha256: 'test-hash', candles: [] },
@@ -28,6 +28,13 @@ test('browser completes explicit save and run flow, locks edits, preserves missi
       if (url.pathname === '/') return route.fulfill({ contentType: 'text/html', body: '<html lang="ko"><div id="strategyWorkbench"></div></html>' });
       const body = req.postData() ? JSON.parse(req.postData()) : null;
       requests.push({ path: url.pathname, method: req.method(), body, headers: req.headers() });
+      if (req.method() === 'DELETE') {
+        if (failDelete) return route.fulfill({ status: 500, contentType: 'application/json', body: JSON.stringify({ message: '삭제 실패 테스트' }) });
+        if (url.pathname === '/api/backtest/runs/12') hasRun = false;
+        else if (url.pathname === '/api/strategies/7') { hasSaved = false; hasRun = false; }
+        else throw new Error('Unexpected deletion: ' + url.pathname);
+        return route.fulfill({ status: 204 });
+      }
       let data;
       if (url.pathname.endsWith('/status')) data = { ready: true, message: 'ChatGPT 준비 완료', model: 'test' };
       else if (url.pathname.endsWith('/interpret')) {
@@ -82,6 +89,33 @@ test('browser completes explicit save and run flow, locks edits, preserves missi
     await page.setViewportSize({ width: 390, height: 844 });
     const width = await page.locator('#strategyWorkbench').evaluate(el => ({ content: el.scrollWidth, box: el.clientWidth }));
     assert.ok(width.content <= width.box, `workbench must wrap long assumption codes on mobile: ${JSON.stringify(width)}`);
+    assert.equal(await page.getByText('일봉의 시가 시각은 한국 시간 09:00, 종가 시각은 15:30으로 가정합니다.', { exact: true }).count(), 1);
+    const deleteRun = page.getByRole('button', { name: '실행 #12 삭제', exact: true });
+    page.once('dialog', dialog => dialog.dismiss());
+    await deleteRun.click({ timeout: 3000 });
+    assert.equal(requests.filter(r => r.method === 'DELETE').length, 0);
+    page.once('dialog', dialog => dialog.accept());
+    await deleteRun.click();
+    await page.getByText('삭제 실패 테스트', { exact: true }).waitFor();
+    assert.equal(await page.getByRole('heading', { name: '실행 #12 · 데이터 없음', exact: true }).count(), 1);
+    failDelete = false;
+    page.once('dialog', dialog => dialog.accept());
+    await deleteRun.click();
+    await page.getByText('실행 이력이 없습니다.', { exact: true }).waitFor();
+    assert.equal(await page.getByRole('heading', { name: '실행 #12 · 데이터 없음', exact: true }).count(), 0);
+    const deleteStrategy = page.getByRole('button', { name: '전략 #7 삭제', exact: true });
+    page.once('dialog', dialog => dialog.dismiss());
+    await deleteStrategy.click();
+    assert.equal(requests.filter(r => r.method === 'DELETE' && r.path === '/api/strategies/7').length, 0);
+    page.once('dialog', async dialog => {
+      assert.match(dialog.message(), /모든 버전/);
+      assert.match(dialog.message(), /실행 이력/);
+      await dialog.accept();
+    });
+    await deleteStrategy.click();
+    await page.getByText('저장된 전략이 없습니다.', { exact: false }).waitFor();
+    assert.equal(await page.getByRole('button', { name: '선택 버전 백테스트 실행', exact: true }).isDisabled(), true);
+    assert.equal(await page.getByText('선택한 전략 없음', { exact: true }).count(), 1);
     assert.deepEqual(errors, []);
   } finally { await browser.close(); }
 });

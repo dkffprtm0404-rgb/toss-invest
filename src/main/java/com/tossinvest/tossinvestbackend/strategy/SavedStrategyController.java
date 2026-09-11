@@ -41,6 +41,12 @@ public class SavedStrategyController {
     @GetMapping("/strategies/{id}")
     public SavedStrategyService.SavedVersion get(@PathVariable long id) { return strategies.get(id); }
 
+    @DeleteMapping("/strategies/{id}")
+    public ResponseEntity<Void> deleteStrategy(@PathVariable long id) {
+        strategies.delete(id);
+        return ResponseEntity.noContent().build();
+    }
+
     @GetMapping("/strategies/{id}/versions")
     public List<SavedStrategyService.SavedVersion> versions(@PathVariable long id, @RequestParam(defaultValue = "0") int page,
                                                            @RequestParam(defaultValue = "20") int size) {
@@ -66,4 +72,10 @@ public class SavedStrategyController {
 
     @GetMapping("/backtest/runs/{id}")
     public SavedBacktestService.RunDetail run(@PathVariable long id) { return backtests.get(id); }
+
+    @DeleteMapping("/backtest/runs/{id}")
+    public ResponseEntity<Void> deleteRun(@PathVariable long id) {
+        backtests.delete(id);
+        return ResponseEntity.noContent().build();
+    }
 }

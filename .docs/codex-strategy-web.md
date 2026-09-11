@@ -36,6 +36,33 @@
 설정은 환경변수로 주입한다. 설정 파일이나 HTTP 요청에 API 키를 추가할 필요가 없다.
 
 - `STRATEGY_CODEX_EXECUTABLE`: 기본 `codex`. IDE/서버가 PATH에서 찾지 못하면 설치된 실행 파일의 절대 경로를 지정한다. Windows 확인 명령: `(Get-Command codex).Source`.
+
+### Windows npm 설치 환경에서 CODEX_NOT_AVAILABLE 대응
+
+npm으로 설치한 codex CLI는 Windows에서 `Get-Command codex -All` 실행 시 아래 3개의 shim이 함께 확인된다.
+
+- `codex.ps1` (ExternalScript, PowerShell 스크립트)
+- `codex.cmd` (Application, Windows 배치 실행 파일)
+- `codex` (Application, 확장자 없는 실행 파일)
+
+PowerShell 터미널에서 `codex` 명령과 `codex login status`가 정상 동작하더라도, Spring Boot 서버 프로세스가 `ProcessBuilder`로 `codex`를 직접 실행할 때는 PowerShell처럼 `.ps1`을 자동으로 선택해주지 않아 실행에 실패하고 `CODEX_NOT_AVAILABLE (503)`이 반환될 수 있다.
+
+**해결 방법:** `STRATEGY_CODEX_EXECUTABLE`에 `.cmd` shim의 절대 경로를 명시적으로 지정한다.
+
+```
+STRATEGY_CODEX_EXECUTABLE=C:\Users\<사용자명>\AppData\Roaming\npm\codex.cmd
+```
+
+**IntelliJ IDEA Run Configuration에서 설정하는 방법**
+
+1. 상단 Run Configuration 드롭다운 → `Edit Configurations...` (실행/디버그 구성)
+2. 대상 Spring Boot 구성(`TossInvestBackendApplication`) 선택
+3. 우측 상단 "옵션 수정" 드롭다운에서 "환경 변수" 항목을 활성화
+4. 새로 생긴 "환경 변수" 입력란에 `STRATEGY_CODEX_EXECUTABLE=C:\Users\<사용자명>\AppData\Roaming\npm\codex.cmd` 추가
+5. VM options에는 필요 시 `-Dserver.address=127.0.0.1`을 함께 지정
+6. 적용 → 실행
+
+터미널의 `./gradlew.bat bootRun`으로 이미 서버가 떠 있는 상태에서 IntelliJ Run을 추가로 실행하면 8090 포트 충돌이 발생하므로, 터미널 프로세스를 먼저 종료한 뒤 IntelliJ에서 실행해야 한다.
 - `STRATEGY_CODEX_MODEL`: 기본 `gpt-5.6-terra`. 구독에서 이용 가능한 모델만 지정한다. 모델 사용 불가 시 자동 대체하지 않는다.
 - `STRATEGY_CODEX_TIMEOUT_MILLIS`: 기본 `120000`, 적용 범위 1000~300000ms. 상태 확인은 20초 제한이다.
 - `SERVER_ADDRESS=127.0.0.1`: 개인 PC용 서버 바인딩을 권장한다. 연동 API 자체도 원격 주소·Host·Origin·Sec-Fetch-Site를 검사하고 POST에는 `X-Strategy-Local: 1`을 요구한다. 프록시 전달 헤더를 신뢰하지 않는다.
@@ -102,6 +129,13 @@ $env:RUN_WEB_SMOKE = 'false'
 - `README.md`, `.docs/codex-strategy-web.md`: 실행·설정·검증 안내.
 
 ## 참고
+
+### 화면 변경 반영과 토큰 사용
+
+- `Codex로 조건 해석`은 입력 문장·전략 규격을 전달하고 모델 응답을 받는 호출이다. 저장, 조건 검증, 선택 버전 백테스트, 결과 조회, 삭제는 모델을 호출하지 않는다.
+- 전략 삭제는 모든 버전과 해당 실행 이력을 함께 삭제한다. 실행 이력 삭제는 선택한 실행 한 건만 삭제한다. 화면에서 삭제 범위를 확인하며, 삭제는 복구할 수 없다.
+- 백테스트의 계산 기준·체결 가정 코드는 화면에서 한국어로 변환한다. 저장된 스냅샷의 코드도 조회 시 동일하게 표시한다.
+- IntelliJ 서버가 `build/resources/main`을 사용하는 경우 소스 파일 편집만으로는 화면에 반영되지 않을 수 있다. Java 17에서 `./gradlew.bat classes --offline`로 클래스·리소스를 갱신하고, DevTools 자동 재시작이 적용되지 않으면 서버를 재시작한다. 브라우저도 새로고침한다. JAR로 실행한다면 새 `bootJar`로 재시작해야 한다.
 
 - [Codex 인증](https://learn.chatgpt.com/docs/auth)
 - [Codex App Server](https://learn.chatgpt.com/docs/app-server)

@@ -1,5 +1,6 @@
 package com.tossinvest.tossinvestbackend.strategy;
 
+import com.tossinvest.tossinvestbackend.backtest.SavedBacktestRepository;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Service;
@@ -17,17 +18,32 @@ public class SavedStrategyService {
     private final SavedStrategyVersionRepository versions;
     private final StrategyValidator validator;
     private final StrategyJson json;
+    private final SavedBacktestRepository runs;
 
     public SavedStrategyService(SavedStrategyRepository strategies, SavedStrategyVersionRepository versions,
-                                StrategyValidator validator, StrategyJson json) {
+                                StrategyValidator validator, StrategyJson json, SavedBacktestRepository runs) {
         this.strategies = strategies;
         this.versions = versions;
         this.validator = validator;
         this.json = json;
+        this.runs = runs;
     }
 
     public record SavedVersion(long id, int version, Instant createdAt, Instant versionCreatedAt, StrategyDefinition strategy) { }
     public record UpdateRequest(Integer expectedVersion, StrategyDefinition strategy) { }
+
+    @Transactional
+    public void delete(long id) {
+        requireForUpdate(id);
+        // Remove dependent rows in one transaction; candle data belongs to the shared cache.
+        runs.deleteForStrategy(id);
+        versions.deleteForStrategy(id);
+        strategies.deleteById(id);
+    }
+
+    public void requireForUpdate(long id) {
+        strategies.findForUpdate(id).orElseThrow(() -> new NotFoundException("Strategy not found."));
+    }
 
     @Transactional
     public SavedVersion create(StrategyDefinition definition) {

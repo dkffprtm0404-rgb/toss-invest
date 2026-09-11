@@ -1,6 +1,23 @@
 (function () {
   'use strict';
 
+  const assumptionLabels = {
+    DAILY_LONG_ONLY_SINGLE_POSITION: '일봉 기준으로 매수 후 매도하는 전략이며, 한 번에 하나의 포지션만 보유합니다.',
+    NO_CAPITAL_QUANTITY_OR_COST_MODEL: '투자 자금, 매매 수량, 수수료·세금·슬리피지는 계산에 반영하지 않습니다.',
+    CLOSED_TRADE_SUM_NOT_COMPOUND_ACCOUNT_RETURN: '수익률 합계는 청산된 거래의 수익률을 단순히 더한 값이며, 계좌의 복리 수익률이 아닙니다.',
+    TRADE_DRAWDOWN_NOT_DAILY_EQUITY_DRAWDOWN: '최대 낙폭은 거래별 수익률 기준이며, 일별 계좌 평가액 기준이 아닙니다.',
+    TRADE_SHARPE_NOT_ANNUALIZED_ZERO_RISK_FREE: '샤프 비율은 거래별 수익률로 계산하며, 연율화하지 않고 무위험 수익률은 0으로 가정합니다.',
+    OPEN_POSITION_EXCLUDED_FROM_CLOSED_METRICS: '아직 청산하지 않은 포지션은 청산 거래 통계에서 제외합니다.',
+    HOLDING_BARS_NOT_CALENDAR_DAYS: '보유 기간은 달력상의 날짜 수가 아닌 데이터의 봉 수로 계산합니다.',
+    AVAILABLE_HISTORY_USED_FOR_INDICATOR_WARMUP: '지표의 초기값 계산에는 확보된 과거 데이터를 사용합니다.',
+    KST_DAILY_TIMESTAMPS_ASSUMED_OPEN_09_00_CLOSE_15_30: '일봉의 시가 시각은 한국 시간 09:00, 종가 시각은 15:30으로 가정합니다.',
+    MISSING_MARKET_DAYS_NOT_INFERRED: '데이터가 없는 날짜의 거래일 여부는 추정하지 않습니다.',
+    SIMPLE_RSI_FLAT_WINDOW_IS_100: '단순 RSI 계산 구간에서 가격 변화가 전혀 없으면 RSI를 100으로 처리합니다.',
+    ZERO_VOLUME_BAR_CANNOT_FILL: '거래량이 0인 봉에서는 매매를 체결하지 않습니다.',
+    SAME_CLOSE_FILL_IS_A_SIMULATION_ASSUMPTION: '신호가 발생한 당일 종가에 체결되는 것은 시뮬레이션상의 가정입니다.',
+    NEXT_AVAILABLE_BAR_OPEN_WITHIN_REQUESTED_PERIOD: '요청한 기간 안에서 다음으로 존재하는 봉의 시가에 체결합니다.'
+  };
+
   // Move the decimal point as text so 0.29% does not become 0.0029000000000000002.
   function shiftDecimal(value, places) {
     if (value == null || String(value).trim() === '') return '';
@@ -55,6 +72,7 @@
 
   const state = new DraftState();
   let selected = null;
+  let displayedRunId = null;
   let strategyPage = 0, versionPage = 0, runPage = 0;
   let assistantReady = false;
   let fieldId = 0;
@@ -95,6 +113,7 @@
   async function api(url, method = 'GET', data) {
     const response = await fetch(url, { method, headers: method === 'GET' ? {} : { 'Content-Type': 'application/json', 'X-Strategy-Local': '1' },
       ...(data === undefined ? {} : { body: JSON.stringify(data) }) });
+    if (response.status === 204) return null;
     let result;
     try { result = await response.json(); } catch { throw new Error('서버 응답을 읽지 못했습니다. 연결 상태를 확인해 주세요.'); }
     if (!response.ok) {
@@ -244,12 +263,34 @@
     const entries = await api(`/api/strategies?page=${page}&size=20`);
     if (!more) strategyList.replaceChildren();
     if (!entries.length && !more) strategyList.append(node('p', '저장된 전략이 없습니다. 위에서 첫 전략을 작성해 주세요.', 'sw-muted'));
-    entries.forEach(saved => strategyList.append(button(`${saved.strategy.name || '이름 없음'} · #${saved.id} · 최신 v${saved.version}`,
-      () => operation('전략과 이력 불러오는 중…', async () => { await selectSaved(await api(`/api/strategies/${saved.id}`)); notify('저장된 전략을 불러왔습니다. 수정한 내용은 검증 후 새 버전으로 저장하세요.'); }))));
+    entries.forEach(saved => {
+      const row = node('div', null, 'sw-list-row');
+      row.append(button(`${saved.strategy.name || '이름 없음'} · #${saved.id} · 최신 v${saved.version}`,
+        () => operation('전략과 이력 불러오는 중…', async () => { await selectSaved(await api(`/api/strategies/${saved.id}`)); notify('저장된 전략을 불러왔습니다. 수정한 내용은 검증 후 새 버전으로 저장하세요.'); })),
+        button(`전략 #${saved.id} 삭제`, () => {
+          if (state.busy || !window.confirm(`“${saved.strategy.name || '이름 없음'}” 전략 #${saved.id}의 모든 버전과 실행 이력을 삭제합니다. 복구할 수 없습니다. 삭제하시겠습니까?`)) return;
+          operation('전략 삭제 중…', async () => {
+            await api(`/api/strategies/${saved.id}`, 'DELETE');
+            if (selected?.id === saved.id) {
+              selected = null; displayedRunId = null;
+              state.accept({ strategy: null, ready: false });
+              prompt.value = ''; clarification.value = '';
+              selection.textContent = '선택한 전략 없음';
+              runTarget.textContent = '저장된 전략과 버전을 먼저 선택하세요.';
+              versions.replaceChildren(); versionMore.hidden = true;
+              runList.replaceChildren(); runMore.hidden = true; resultArea.replaceChildren();
+              renderEditor(); renderIssues();
+            }
+            await loadStrategies(false);
+            notify(`전략 #${saved.id}의 모든 버전과 실행 이력을 삭제했습니다.`);
+          });
+        }, 'sw-danger'));
+      strategyList.append(row);
+    });
     strategyPage = page; strategyMore.hidden = entries.length < 20;
   }
   async function selectSaved(saved) {
-    selected = saved; state.accept({ strategy: structuredClone(saved.strategy), ready: false });
+    selected = saved; displayedRunId = null; state.accept({ strategy: structuredClone(saved.strategy), ready: false });
     const restored = splitSavedPrompt(saved.strategy.originalPrompt);
     prompt.value = restored.prompt; clarification.value = restored.clarifications;
     selection.textContent = `선택: ${saved.strategy.name || '이름 없음'} · 전략 #${saved.id} / 버전 ${saved.version}`;
@@ -282,7 +323,7 @@
     const result = await api(`/api/strategies/${selected.id}/backtests`, 'POST', { version: selected.version, symbol: symbol.value.trim(), startDate: start.value, endDate: end.value, executionMode: mode.value });
     renderResult(result); await loadRuns(false); notify(`실행 #${result.id} 결과가 저장되었습니다. 상태: ${statusLabel(result.status)}`);
   }), 'sw-primary');
-  run.append(runTarget, runFields, node('p', '로컬 일봉 데이터를 사용합니다. 필요한 이력 데이터가 없으면 거래가 없거나 실행이 제한될 수 있습니다.', 'sw-muted'), runButton);
+  run.append(runTarget, runFields, node('p', '저장한 조건과 로컬 일봉 데이터로 계산하며 AI 토큰을 사용하지 않습니다. 필요한 이력 데이터가 없으면 거래가 없거나 실행이 제한될 수 있습니다.', 'sw-muted'), runButton);
   const results = block('5. 결과와 실행 이력');
   results.append(node('p', '아래 수치는 청산된 거래 단위 통계입니다. 초기 자금·포지션 크기·수수료·세금·슬리피지를 적용하지 않아 계좌 수익률과 다릅니다.', 'sw-caution'));
   const resultArea = node('div');
@@ -295,8 +336,23 @@
     const entries = await api(`/api/strategies/${selected.id}/backtests?page=${page}&size=20`);
     if (!more) runList.replaceChildren();
     if (!entries.length && !more) runList.append(node('p', '실행 이력이 없습니다.', 'sw-muted'));
-    entries.forEach(item => runList.append(button(`#${item.id} · v${item.version} · ${statusLabel(item.status)} · ${dateTime(item.createdAt)}`,
-      () => operation('저장된 실행 결과 불러오는 중…', async () => { renderResult(await api(`/api/backtest/runs/${item.id}`)); notify('당시 저장된 전략·데이터·결과 스냅샷을 표시합니다.'); }))));
+    entries.forEach(item => {
+      const row = node('div', null, 'sw-list-row');
+      row.append(button(`#${item.id} · v${item.version} · ${statusLabel(item.status)} · ${dateTime(item.createdAt)}`,
+        () => operation('저장된 실행 결과 불러오는 중…', async () => { renderResult(await api(`/api/backtest/runs/${item.id}`)); notify('당시 저장된 전략·데이터·결과 스냅샷을 표시합니다.'); })),
+        button(`실행 #${item.id} 삭제`, () => {
+          if (state.busy || !window.confirm(`실행 #${item.id}의 결과와 당시 데이터·조건 스냅샷을 삭제합니다. 저장된 전략은 유지됩니다. 복구할 수 없습니다. 삭제하시겠습니까?`)) return;
+          operation('실행 이력 삭제 중…', async () => {
+            await api(`/api/backtest/runs/${item.id}`, 'DELETE');
+            if (displayedRunId === item.id) {
+              displayedRunId = null;
+              resultArea.replaceChildren(node('p', '조회 중이던 실행 이력을 삭제했습니다.', 'sw-muted'));
+            }
+            await loadRuns(false); notify(`실행 #${item.id} 이력을 삭제했습니다.`);
+          });
+        }, 'sw-danger'));
+      runList.append(row);
+    });
     runPage = page; runMore.hidden = entries.length < 20;
   }
   function dateTime(value) { return value == null ? '—' : new Date(value).toLocaleString('ko-KR', { timeZone: 'Asia/Seoul' }); }
@@ -330,6 +386,7 @@
   }
   function details(parent, title, value) { const el = node('details'); el.append(node('summary', title), node('pre', JSON.stringify(value, null, 2), 'sw-prose')); parent.append(el); }
   function renderResult(item) {
+    displayedRunId = item.id;
     resultArea.replaceChildren(); const snapshot = item.snapshot; const result = snapshot.result;
     resultArea.append(node('h4', `실행 #${item.id} · ${statusLabel(item.status)}`));
     pairs(resultArea, [['전략 / 버전', `${snapshot.strategy.strategy.name || '이름 없음'} / v${snapshot.strategy.version}`], ['종목', snapshot.execution.symbol],
@@ -359,7 +416,12 @@
         details(resultArea, '미청산 진입 근거', p);
       }
       if (result.pendingOrder) { resultArea.append(node('p', `대기 주문: ${reasonLabel(result.pendingOrder.action)} · ${reasonLabel(result.pendingOrder.status)} · ${reasonLabel(result.pendingOrder.reason)}`)); details(resultArea, '대기 주문 근거', result.pendingOrder); }
-      if (result.assumptions?.length) { const list = node('ul'); result.assumptions.forEach(text => list.append(node('li', text))); resultArea.append(list); }
+      if (result.assumptions?.length) {
+        resultArea.append(node('h4', '백테스트 계산 기준과 체결 가정'));
+        const list = node('ul');
+        result.assumptions.forEach(code => list.append(node('li', Object.hasOwn(assumptionLabels, code) ? assumptionLabels[code] : code)));
+        resultArea.append(list);
+      }
     }
     // Histories display the immutable snapshot; no re-run and no current-candle replacement.
     const snapshotDetails = node('details'); snapshotDetails.append(node('summary', '실행 당시 전략·데이터·비용 스냅샷'));

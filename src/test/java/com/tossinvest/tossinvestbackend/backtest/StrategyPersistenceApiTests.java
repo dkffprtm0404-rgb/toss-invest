@@ -47,6 +47,42 @@ class StrategyPersistenceApiTests {
     void seed() { candles.saveAllAndFlush(UserStrategyBacktestEngineTests.candles(100, 100, 94, 93)); }
 
     @Test
+    void deletingOneRunPreservesOtherRunsAndStrategyVersions() throws Exception {
+        long id = create();
+        long first = run(id, EXECUTION).path("id").asLong();
+        long second = run(id, EXECUTION).path("id").asLong();
+        mvc.perform(delete("/api/backtest/runs/" + first)).andExpect(status().isNoContent());
+        mvc.perform(get("/api/backtest/runs/" + first)).andExpect(status().isNotFound());
+        mvc.perform(delete("/api/backtest/runs/" + first)).andExpect(status().isNotFound());
+        mvc.perform(get("/api/backtest/runs/" + second)).andExpect(status().isOk());
+        mvc.perform(get("/api/strategies/" + id + "/versions/1")).andExpect(status().isOk());
+        mvc.perform(get("/api/strategies/" + id + "/backtests"))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.length()").value(1));
+    }
+
+    @Test
+    void deletingStrategyRemovesEveryVersionAndItsRunsButPreservesOtherStrategies() throws Exception {
+        long id = create();
+        long first = run(id, EXECUTION).path("id").asLong();
+        mvc.perform(put("/api/strategies/" + id).contentType(MediaType.APPLICATION_JSON)
+                .content("{\"expectedVersion\":1,\"strategy\":" + STRATEGY + "}"))
+                .andExpect(status().isOk());
+        long second = run(id, EXECUTION.replace("\"version\":1", "\"version\":2")).path("id").asLong();
+        long other = create();
+        long otherRun = run(other, EXECUTION).path("id").asLong();
+        mvc.perform(delete("/api/strategies/" + id)).andExpect(status().isNoContent());
+        mvc.perform(get("/api/strategies/" + id)).andExpect(status().isNotFound());
+        mvc.perform(get("/api/strategies/" + id + "/versions/1")).andExpect(status().isNotFound());
+        mvc.perform(get("/api/strategies/" + id + "/versions/2")).andExpect(status().isNotFound());
+        mvc.perform(get("/api/backtest/runs/" + first)).andExpect(status().isNotFound());
+        mvc.perform(get("/api/backtest/runs/" + second)).andExpect(status().isNotFound());
+        mvc.perform(delete("/api/strategies/" + id)).andExpect(status().isNotFound());
+        mvc.perform(get("/api/strategies/" + other)).andExpect(status().isOk());
+        mvc.perform(get("/api/backtest/runs/" + otherRun)).andExpect(status().isOk());
+        assertThat(candles.count()).isEqualTo(4);
+    }
+
+    @Test
     void savesMetadataAndAppendsVersionsWithoutChangingThePreviousDefinition() throws Exception {
         long id = create();
         mvc.perform(put("/api/strategies/" + id).contentType(MediaType.APPLICATION_JSON)
