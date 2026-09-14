@@ -34,11 +34,28 @@ class StrategyWebWorkflowTests {
     @Test void browserUsesRealValidationPersistenceAndBacktestEndpoints() throws Exception {
         when(codex.status()).thenReturn(new CodexClient.Status(true, "READY", "통합 검증용 모델 응답", "test"));
         when(codex.interpret(anyString())).thenReturn(StrategyAssistantTests.OUTPUT);
+        when(codex.model()).thenReturn("test-model");
+        when(codex.explain(anyString())).thenThrow(new AssistantException("CODEX_TIMEOUT")).thenAnswer(invocation -> {
+            var mapper = new com.fasterxml.jackson.databind.ObjectMapper();
+            var facts = mapper.readTree((String) invocation.getArgument(0)).path("facts");
+            var selected = mapper.createArrayNode();
+            for (var fact : facts) {
+                if (fact.path("id").asText().equals("summary:return") || fact.path("id").asText().equals("reason:STOP_LOSS")) {
+                    var choice = selected.addObject();
+                    choice.put("factId", fact.path("id").asText());
+                    choice.set("value", fact.path("value")); choice.set("tradeNumbers", fact.path("tradeNumbers"));
+                }
+            }
+            return mapper.createObjectNode().set("highlights", selected).toString();
+        });
         if ("true".equals(System.getenv("RUN_CODEX_LIVE"))) {
             var real = new CodexClient(new CodexProcessFactory("codex"), new com.fasterxml.jackson.databind.ObjectMapper(),
                     "gpt-5.6-terra", 120000);
             when(codex.status()).thenAnswer(invocation -> real.status());
             when(codex.interpret(anyString())).thenAnswer(invocation -> real.interpret(invocation.getArgument(0)));
+            when(codex.explain(anyString())).thenThrow(new AssistantException("CODEX_TIMEOUT"))
+                    .thenAnswer(invocation -> real.explain(invocation.getArgument(0)));
+            when(codex.model()).thenReturn(real.model());
         }
         var input = new ArrayList<CandleEntity>();
         for (int i = 0; i < 40; i++) {

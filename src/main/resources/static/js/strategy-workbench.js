@@ -395,7 +395,7 @@
     if (result) {
       const m = result.metrics;
       if (m) pairs(resultArea, [['청산 거래 수', m.closedTrades], ['거래 승률', pct(m.winRate)], ['거래 평균 수익률', pct(m.averageTradeReturnRate)],
-        ['거래 수익률 단순 합계', pct(m.sumTradeReturnRate)], ['거래 수익률 최대 낙폭', pct(m.tradeReturnMaxDrawdown)],
+        ['거래 수익률 단순 합계', pct(m.sumTradeReturnRate)], ['거래 수익률 최대 낙폭 (%p)', m.tradeReturnMaxDrawdown == null ? '—' : pct(m.tradeReturnMaxDrawdown) + 'p'],
         ['거래 샤프 비율 (비연율화)', m.tradeSharpeRatio], ['평균 보유 봉 수', m.averageHoldingBars]]);
       pairs(resultArea, [['실제 데이터 기간', result.actualStartDate ? `${result.actualStartDate} ~ ${result.actualEndDate}` : '없음'],
         ['캔들 수', result.candleCount], ['준비 봉 수 / 필요 봉 수', `${result.warmupBars} / ${result.requiredWarmupBars}`]]);
@@ -403,11 +403,11 @@
       else {
         const scroller = node('div', null, 'sw-table-scroll'); const table = node('table');
         const caption = node('caption', '청산 거래 내역 · 시각은 한국 시간'); table.append(caption);
-        const header = node('tr'); ['진입 체결', '청산 체결', '진입가', '청산가', '보유 봉', '수익률', '진입 / 청산 사유'].forEach(label => { const th = node('th', label); th.scope = 'col'; header.append(th); });
+        const header = node('tr'); ['거래 번호', '진입 체결', '청산 체결', '진입가', '청산가', '보유 봉', '수익률', '진입 / 청산 사유'].forEach(label => { const th = node('th', label); th.scope = 'col'; header.append(th); });
         const thead = node('thead'); thead.append(header); table.append(thead); const tbody = node('tbody');
-        result.trades.forEach(trade => { const row = node('tr'); [dateTime(trade.entry.executionTimestamp), dateTime(trade.exit.executionTimestamp), trade.entry.price, trade.exit.price, trade.holdingBars, pct(trade.returnRate), `${reasonLabel(trade.entry.reason)} / ${reasonLabel(trade.exit.reason)}`].forEach(value => row.append(node('td', value))); tbody.append(row); });
+        result.trades.forEach((trade, index) => { const row = node('tr'); [`#${index + 1}`, dateTime(trade.entry.executionTimestamp), dateTime(trade.exit.executionTimestamp), trade.entry.price, trade.exit.price, trade.holdingBars, pct(trade.returnRate), `${reasonLabel(trade.entry.reason)} / ${reasonLabel(trade.exit.reason)}`].forEach(value => row.append(node('td', value))); tbody.append(row); });
         table.append(tbody); scroller.append(table); resultArea.append(scroller);
-        details(resultArea, '거래별 신호 시각과 조건 근거', result.trades);
+        if (!window.StrategyResults) details(resultArea, '거래별 신호 시각과 조건 근거', result.trades);
       }
       if (result.openPosition) {
         const p = result.openPosition;
@@ -422,6 +422,10 @@
         result.assumptions.forEach(code => list.append(node('li', Object.hasOwn(assumptionLabels, code) ? assumptionLabels[code] : code)));
         resultArea.append(list);
       }
+    }
+    if (window.StrategyResults) {
+      const analysisArea = node('div'); resultArea.append(analysisArea);
+      window.StrategyResults.mount(analysisArea, item);
     }
     // Histories display the immutable snapshot; no re-run and no current-candle replacement.
     const snapshotDetails = node('details'); snapshotDetails.append(node('summary', '실행 당시 전략·데이터·비용 스냅샷'));

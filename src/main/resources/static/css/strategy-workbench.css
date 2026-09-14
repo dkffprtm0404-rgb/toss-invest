@@ -57,6 +57,25 @@
 #strategyWorkbench th, #strategyWorkbench td { padding: 10px; text-align: left; border-bottom: 1px solid #3b493e; white-space: nowrap; }
 #strategyWorkbench .sw-sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
 #strategyWorkbench [hidden] { display: none !important; }
+#strategyWorkbench .sr-results { min-width: 0; }
+#strategyWorkbench .sr-results > section { margin-top: 24px; padding-top: 12px; border-top: 1px solid #364038; }
+#strategyWorkbench .sr-chart { margin: 18px 0; padding: 12px; border: 1px solid #3e4a40; border-radius: 8px; min-width: 0; }
+#strategyWorkbench .sr-chart figcaption { font-weight: 700; }
+#strategyWorkbench .sr-chart svg { display: block; width: 100%; height: auto; overflow: visible; margin-top: 12px; }
+#strategyWorkbench .sr-chart svg text { fill: #bacabe; font: 13px system-ui, sans-serif; }
+#strategyWorkbench .sr-grid { stroke: #3b493e; stroke-width: 1; }
+#strategyWorkbench .sr-line { stroke: #abd5b9; stroke-width: 2; fill: none; }
+#strategyWorkbench .sr-point { fill: #d9dfdc; stroke: #121715; stroke-width: 1; }
+#strategyWorkbench .sr-point[role=button] { cursor: pointer; }
+#strategyWorkbench .sr-entry { fill: #91d9af; stroke: #12381f; stroke-width: 2; }
+#strategyWorkbench .sr-exit { fill: #ffb17c; stroke: #573015; stroke-width: 2; }
+#strategyWorkbench .sr-point:focus { stroke: #f9d07a; stroke-width: 4; outline: none; }
+#strategyWorkbench .sr-tooltip { min-height: 44px; font-size: 13px; color: #e8dcae; }
+#strategyWorkbench .sr-group, #strategyWorkbench .sr-highlight, #strategyWorkbench .sr-trade { padding: 12px; background: #18211b; border-radius: 6px; margin: 12px 0; }
+#strategyWorkbench .sr-results h5 { font-size: 14px; margin: 12px 0; }
+#strategyWorkbench .sr-results h6 { font-size: 13px; margin: 10px 0; }
+#strategyWorkbench .sr-evidence { border-left: 2px solid #638970; padding-left: 12px; }
+#strategyWorkbench .sr-references { display: flex; flex-wrap: wrap; gap: 4px; }
 @media (max-width: 700px) {
   #strategyWorkbench { padding: 18px; }
   #strategyWorkbench h2 { font-size: 23px; }

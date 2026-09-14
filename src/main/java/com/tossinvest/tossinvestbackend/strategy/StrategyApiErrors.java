@@ -4,6 +4,7 @@ import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.JsonMappingException;
 import com.fasterxml.jackson.databind.exc.InvalidTypeIdException;
 import com.tossinvest.tossinvestbackend.backtest.UserStrategyBacktestController;
+import com.tossinvest.tossinvestbackend.backtest.BacktestAnalysisController;
 import com.tossinvest.tossinvestbackend.backtest.UserStrategyBacktestEngine;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.converter.HttpMessageNotReadableException;
@@ -13,7 +14,7 @@ import org.springframework.web.method.annotation.MethodArgumentTypeMismatchExcep
 import java.util.List;
 
 /** Shared error contract, scoped to user strategy APIs only. */
-@RestControllerAdvice(assignableTypes = {UserStrategyBacktestController.class, SavedStrategyController.class})
+@RestControllerAdvice(assignableTypes = {UserStrategyBacktestController.class, SavedStrategyController.class, BacktestAnalysisController.class})
 public class StrategyApiErrors {
     public record ApiError(String code, String message, List<StrategyValidator.Issue> issues, Long timestamp) { }
 

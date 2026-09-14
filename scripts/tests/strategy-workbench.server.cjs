@@ -8,7 +8,7 @@ test('real server saves a confirmed draft, runs seeded candles, and reloads immu
   const browser = await chromium.launch({headless:true, channel:'msedge'});
   try {
     const page = await browser.newPage();
-    page.setDefaultTimeout(150000);
+    page.setDefaultTimeout(process.env.RUN_CODEX_LIVE === 'true' ? 150000 : 15000);
     const errors = []; page.on('pageerror', e => errors.push(e.message));
     // No market/account requests or remote fonts/CDNs during this isolated integration test.
     await page.route('**/*', route => {
@@ -44,11 +44,33 @@ test('real server saves a confirmed draft, runs seeded candles, and reloads immu
     assert.equal(run.snapshot.strategy.strategy.entry.conditions.length,1);
     assert.equal(run.snapshot.costs.model,'NOT_MODELED');
     await root.getByText(`실행 #${run.id} · 완료`, {exact:true}).waitFor();
+    await root.getByRole('img', {name:'종가와 체결점'}).waitFor();
+    assert.equal(await root.locator('.sr-results svg').count(),3, 'all result charts work without remote Chart.js');
+    await root.getByRole('button', {name:'AI 설명 생성',exact:true}).click();
+    await root.getByText('CODEX_TIMEOUT', {exact:false}).waitFor();
+    assert.equal(await root.getByRole('img', {name:'종가와 체결점'}).isVisible(),true);
+    const explanationWait = page.waitForResponse(r => r.request().method() === 'POST' && /\/explanation$/.test(r.url()));
+    await root.getByRole('button', {name:'AI 설명 다시 시도'}).click();
+    const explanationResponse = await explanationWait;
+    assert.equal(explanationResponse.status(),200,await explanationResponse.text());
+    await root.getByText('저장된 AI 설명', {exact:false}).waitFor();
+    const savedExplanation = await page.request.get(`${base}/api/backtest/runs/${run.id}/explanation`);
+    assert.equal(savedExplanation.status(),200);
+    const explanation = await savedExplanation.json();
+    assert.equal(explanation.status,'READY');
+    assert.equal(explanation.dataSha256,run.snapshot.data.sha256);
+    const explanationText = await root.locator('.sr-explanation .sr-highlight').allTextContents();
+    assert.ok(explanationText.length > 0);
+    await root.locator('.sr-explanation').getByRole('button', {name:'거래 #1 근거 보기'}).click();
+    assert.equal(await root.locator('.sr-trade[data-trade-number="1"]').getAttribute('open'),'');
     await page.screenshot({path:'build/strategy-workbench-desktop.png',fullPage:true});
+    await root.locator('.sr-results').screenshot({path:'build/strategy-results-desktop.png'});
     await page.reload();
     await root.getByRole('button', {name:/ · #\d+ · 최신 v1/}).click();
     await root.getByRole('button', {name:new RegExp('^#'+run.id+' · v1')}).click();
     await root.getByText(`실행 #${run.id} · 완료`, {exact:true}).waitFor();
+    await root.getByText('저장된 AI 설명', {exact:false}).waitFor();
+    assert.deepEqual(await root.locator('.sr-explanation .sr-highlight').allTextContents(),explanationText);
     await page.setViewportSize({width:390,height:844});
     await page.screenshot({path:'build/strategy-workbench-mobile.png',fullPage:true});
     const overflow = await page.evaluate(() => [...document.querySelectorAll('#strategyWorkbench, #strategyWorkbench *')]

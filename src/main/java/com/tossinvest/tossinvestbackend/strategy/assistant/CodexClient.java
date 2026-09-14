@@ -2,6 +2,7 @@ package com.tossinvest.tossinvestbackend.strategy.assistant;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.tossinvest.tossinvestbackend.backtest.BacktestExplanationService;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 import java.io.IOException;
@@ -30,14 +31,20 @@ public class CodexClient {
     public record Status(boolean ready, String code, String message, String model) { }
     public Status status() {
         try {
-            withSession(false, null);
+            withSession(false, null, null, null);
             return new Status(true, "READY", "ChatGPT 구독 로그인 연결됨 · API 키 사용 안 함", model);
         } catch (AssistantException e) { return new Status(false, e.code(), e.getMessage(), model); }
     }
 
-    public String interpret(String input) { return withSession(true, input); }
+    public String interpret(String input) {
+        return withSession(true, input, StrategyAssistantService.INSTRUCTIONS, "/codex/strategy-output.schema.json");
+    }
+    public String explain(String input) {
+        return withSession(true, input, BacktestExplanationService.INSTRUCTIONS, "/codex/backtest-explanation.schema.json");
+    }
+    public String model() { return model; }
 
-    private String withSession(boolean generate, String input) {
+    private String withSession(boolean generate, String input, String instructions, String schemaResource) {
         if (!active.tryAcquire()) throw new AssistantException("CODEX_BUSY");
         Path directory = null;
         try {
@@ -60,13 +67,13 @@ public class CodexClient {
                 thread.put("cwd", directory.toString()); thread.put("ephemeral", true);
                 thread.put("approvalPolicy", "never"); thread.put("sandbox", "read-only");
                 thread.put("environments", List.of()); thread.put("selectedCapabilityRoots", List.of());
-                thread.put("config", overrides); thread.put("baseInstructions", StrategyAssistantService.INSTRUCTIONS);
-                thread.put("developerInstructions", "전략 데이터만 출력한다. 도구를 호출하거나 파일을 읽지 않는다.");
+                thread.put("config", overrides); thread.put("baseInstructions", instructions);
+                thread.put("developerInstructions", "주어진 데이터와 출력 스키마에 맞는 JSON만 출력한다. 도구를 호출하거나 파일을 읽지 않는다.");
                 String threadId = session.rpc("thread/start", thread).path("thread").path("id").asText();
                 if (threadId.isBlank()) throw new AssistantException("CODEX_INVALID_RESPONSE");
                 requireSubscription(session.rpc("account/read", Map.of("refreshToken", false)));
                 JsonNode schema;
-                try (var stream = getClass().getResourceAsStream("/codex/strategy-output.schema.json")) {
+                try (var stream = getClass().getResourceAsStream(schemaResource)) {
                     if (stream == null) throw new IOException("Missing schema");
                     schema = mapper.readTree(stream);
                 }

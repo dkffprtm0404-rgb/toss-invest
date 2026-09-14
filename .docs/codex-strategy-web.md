@@ -141,3 +141,5 @@ $env:RUN_WEB_SMOKE = 'false'
 - [Codex App Server](https://learn.chatgpt.com/docs/app-server)
 - [전략 저장 계약](strategy-persistence.md)
 - [전략 실행 계약](user-strategy-backtest.md)
+
+6단계 결과 차트·AI 설명 생성/저장과 추가 검증은 [결과 차트와 AI 설명](backtest-results-explanation.md)에 기록했다. `AI 설명 생성`도 같은 Codex 구독 연결을 사용하며, 이미 저장된 설명의 조회는 모델을 호출하지 않는다.

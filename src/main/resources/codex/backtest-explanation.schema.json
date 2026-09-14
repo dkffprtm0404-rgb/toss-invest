@@ -1,0 +1,22 @@
+{
+  "type": "object",
+  "properties": {
+    "highlights": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 8,
+      "items": {
+        "type": "object",
+        "properties": {
+          "factId": { "type": "string" },
+          "value": { "type": "number" },
+          "tradeNumbers": { "type": "array", "items": { "type": "integer" } }
+        },
+        "required": ["factId", "value", "tradeNumbers"],
+        "additionalProperties": false
+      }
+    }
+  },
+  "required": ["highlights"],
+  "additionalProperties": false
+}

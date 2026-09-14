@@ -12,8 +12,12 @@ public class StrategyAssistantErrors {
     public record Error(String code, String message, List<StrategyValidator.Issue> issues) { }
     @ExceptionHandler(AssistantException.class)
     public ResponseEntity<Error> assistant(AssistantException e) {
+        return response(e);
+    }
+    public static ResponseEntity<Error> response(AssistantException e) {
         int status = switch (e.code()) {
             case "LOCAL_ONLY" -> 403;
+            case "EXPLANATION_TOO_LARGE" -> 422;
             case "CODEX_BUSY", "CODEX_LIMIT_REACHED" -> 429;
             case "CODEX_TIMEOUT" -> 504;
             case "CODEX_INVALID_RESPONSE", "CODEX_FAILED" -> 502;

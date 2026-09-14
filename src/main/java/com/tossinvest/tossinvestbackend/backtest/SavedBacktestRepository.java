@@ -8,8 +8,13 @@ import org.springframework.data.repository.query.Param;
 
 import java.time.Instant;
 import java.util.List;
+import java.util.Optional;
 
 public interface SavedBacktestRepository extends JpaRepository<SavedBacktestEntity, Long> {
+    // Lock the database row without upgrading an @Immutable entity already loaded by OpenEntityManagerInView.
+    @Query(value = "select id from saved_backtest where id = :id for update", nativeQuery = true)
+    Optional<Long> lockId(@Param("id") long id);
+
     @Modifying(flushAutomatically = true, clearAutomatically = true)
     @Query("delete from SavedBacktestEntity b where b.id = :id")
     int deleteRun(@Param("id") long id);

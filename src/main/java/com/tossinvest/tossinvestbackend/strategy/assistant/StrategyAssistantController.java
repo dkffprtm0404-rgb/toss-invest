@@ -37,7 +37,7 @@ public class StrategyAssistantController {
         return host != null && Set.of("localhost", "127.0.0.1", "::1", "[::1]", "0:0:0:0:0:0:0:1")
                 .contains(host.toLowerCase(java.util.Locale.ROOT));
     }
-    private static void local(HttpServletRequest request) {
+    public static void local(HttpServletRequest request) {
         if (!loopback(request.getRemoteAddr()) || !loopback(request.getServerName()))
             throw new AssistantException("LOCAL_ONLY");
         String origin = request.getHeader("Origin");
