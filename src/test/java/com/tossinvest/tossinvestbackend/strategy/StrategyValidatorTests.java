@@ -33,7 +33,7 @@ class StrategyValidatorTests {
     @Test
     void invalidValuesAndMissingGroupOperatorAreRejected() throws Exception {
         var issues = validator.validate(read("""
-                {"schemaVersion":2,"entry":{"conditions":[
+                {"schemaVersion":4,"entry":{"conditions":[
                  {"type":"MA_CROSS","averageType":"EMA","shortPeriod":20,"longPeriod":5,"direction":"UP"},
                  {"type":"RSI","method":"SIMPLE","period":0,"threshold":101,"comparison":"GTE"},
                  {"type":"VOLUME","period":501,"multiplier":0,"comparison":"CROSS_ABOVE"}]},
@@ -63,6 +63,14 @@ class StrategyValidatorTests {
                 {"schemaVersion":1,"entry":{"conditions":[
                  {"type":"VOLUME","period":1,"multiplier":1,"comparison":"GTE"}]},"exit":{}}
                 """))).extracting(StrategyValidator.Issue::path).contains("exit.conditions");
+    }
+
+    @Test void rsiRejectsComparisonsThatCannotBeDisplayedOrGenerated() throws Exception {
+        for (String comparison : List.of("GT", "LT")) {
+            var issues = validator.validate(read("{\"schemaVersion\":2,\"entry\":{\"conditions\":["
+                    + "{\"type\":\"RSI\",\"method\":\"SIMPLE\",\"period\":14,\"threshold\":30,\"comparison\":\"" + comparison + "\"}]}}"));
+            assertThat(issues).extracting(StrategyValidator.Issue::path).contains("entry.conditions[0].comparison");
+        }
     }
 
     private StrategyDefinition read(String json) throws Exception {

@@ -34,6 +34,13 @@ class StrategyWebWorkflowTests {
     @Test void browserUsesRealValidationPersistenceAndBacktestEndpoints() throws Exception {
         when(codex.status()).thenReturn(new CodexClient.Status(true, "READY", "통합 검증용 모델 응답", "test"));
         when(codex.interpret(anyString())).thenReturn(StrategyAssistantTests.OUTPUT);
+        when(codex.interpretBatch(anyString())).thenAnswer(invocation -> {
+            var mapper = new com.fasterxml.jackson.databind.ObjectMapper();
+            var output = mapper.createObjectNode(); output.put("sharedContext", ""); output.putArray("questions");
+            var item = (com.fasterxml.jackson.databind.node.ObjectNode) mapper.readTree(StrategyAssistantTests.OUTPUT);
+            item.put("title", "골든크로스"); item.put("sourceText", mapper.readTree((String) invocation.getArgument(0)).path("prompt").asText());
+            output.putArray("items").add(item); return output.toString();
+        });
         when(codex.model()).thenReturn("test-model");
         when(codex.explain(anyString())).thenThrow(new AssistantException("CODEX_TIMEOUT")).thenAnswer(invocation -> {
             var mapper = new com.fasterxml.jackson.databind.ObjectMapper();
@@ -53,6 +60,7 @@ class StrategyWebWorkflowTests {
                     "gpt-5.6-terra", 120000);
             when(codex.status()).thenAnswer(invocation -> real.status());
             when(codex.interpret(anyString())).thenAnswer(invocation -> real.interpret(invocation.getArgument(0)));
+            when(codex.interpretBatch(anyString())).thenAnswer(invocation -> real.interpretBatch(invocation.getArgument(0)));
             when(codex.explain(anyString())).thenThrow(new AssistantException("CODEX_TIMEOUT"))
                     .thenAnswer(invocation -> real.explain(invocation.getArgument(0)));
             when(codex.model()).thenReturn(real.model());

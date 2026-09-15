@@ -46,6 +46,32 @@ class StrategyPersistenceApiTests {
     @BeforeEach
     void seed() { candles.saveAllAndFlush(UserStrategyBacktestEngineTests.candles(100, 100, 94, 93)); }
 
+    @Test void expandedRulesAndOhlcEvidenceSurviveVersionAndCandleChanges() throws Exception {
+        var data = UserStrategyBacktestEngineTests.candles(100, 105, 130, 104);
+        data.forEach(c -> { c.setHighPrice(c.getClosePrice()); c.setLowPrice(c.getClosePrice()); });
+        candles.saveAllAndFlush(data);
+        String definition = """
+                {"schemaVersion":2,"name":"신고가 추적손절","originalPrompt":"종가 신고가 매수, 고가 대비 20% 추적손절",
+                 "entry":{"conditions":[{"type":"RANGE_BREAKOUT","period":1,"periodUnit":"BARS","priceField":"HIGH","comparison":"GT"}]},
+                 "risk":{"trailingStop":{"rate":-0.20,"peakBasis":"HIGH"}}}
+                """;
+        var saved = mapper.readTree(mvc.perform(post("/api/strategies").contentType(MediaType.APPLICATION_JSON).content(definition))
+                .andExpect(status().isCreated()).andReturn().getResponse().getContentAsString());
+        long id = saved.path("id").asLong();
+        JsonNode first = run(id, EXECUTION);
+        assertThat(first.at("/snapshot/result/trades/0/entry/evidence/0/referenceValue").decimalValue()).isEqualByComparingTo("100");
+        assertThat(first.at("/snapshot/result/trades/0/exit/evidence/0/referenceValue").decimalValue()).isEqualByComparingTo("104");
+        assertThat(first.at("/snapshot/strategy/strategy/risk/trailingStop/peakBasis").asText()).isEqualTo("HIGH");
+        mvc.perform(put("/api/strategies/" + id).contentType(MediaType.APPLICATION_JSON)
+                .content("{\"expectedVersion\":1,\"strategy\":" + definition.replace("-0.20", "-0.30") + "}"))
+                .andExpect(status().isOk());
+        candles.saveAllAndFlush(UserStrategyBacktestEngineTests.candles(100, 100, 100, 100));
+        assertThat(read("/api/backtest/runs/" + first.path("id").asLong()).path("snapshot")).isEqualTo(first.path("snapshot"));
+        mvc.perform(get("/api/strategies/" + id + "/versions/1"))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.strategy.schemaVersion").value(2))
+                .andExpect(jsonPath("$.strategy.risk.trailingStop.rate").value(-0.20));
+    }
+
     @Test
     void deletingOneRunPreservesOtherRunsAndStrategyVersions() throws Exception {
         long id = create();

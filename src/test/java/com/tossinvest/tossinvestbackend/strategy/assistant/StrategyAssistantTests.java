@@ -56,4 +56,19 @@ class StrategyAssistantTests {
         }
         verifyNoInteractions(codex);
     }
+
+    @Test void expandedModelOutputIsValidatedAndMissingAtrParametersStayUnresolved() {
+        String output = """
+                {"strategy":{"schemaVersion":2,"name":"국내 신고가","entry":{"conditions":[
+                 {"type":"RANGE_BREAKOUT","period":52,"periodUnit":"CALENDAR_WEEKS","priceField":"HIGH","comparison":"GT"}]},
+                 "risk":{"trailingStop":{"rate":-0.2,"peakBasis":"HIGH"},"atrStop":{"period":14,"method":"WILDER","multiplier":1.5}}},
+                 "questions":[],"unsupported":[]}
+                """;
+        when(codex.interpret(anyString())).thenReturn(output);
+        assertThat(service.interpret(new StrategyAssistantService.Request("입력", null)).ready()).isTrue();
+        when(codex.interpret(anyString())).thenReturn(output.replace("\"method\":\"WILDER\"", "\"method\":null"));
+        var missing = service.interpret(new StrategyAssistantService.Request("입력", null));
+        assertThat(missing.ready()).isFalse();
+        assertThat(missing.issues()).extracting(StrategyValidator.Issue::path).contains("risk.atrStop.method");
+    }
 }

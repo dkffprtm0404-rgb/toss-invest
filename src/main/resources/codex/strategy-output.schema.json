@@ -9,7 +9,8 @@
             "schemaVersion": {
               "type": "integer",
               "enum": [
-                1
+                2,
+                3
               ]
             },
             "name": {
@@ -229,6 +230,283 @@
                             },
                             "required": [
                               "type",
+                              "period",
+                              "multiplier",
+                              "comparison"
+                            ],
+                            "additionalProperties": false
+                          },
+                          {
+                            "type": "object",
+                            "properties": {
+                              "type": {
+                                "type": "string",
+                                "enum": [
+                                  "RANGE_BREAKOUT"
+                                ]
+                              },
+                              "period": {
+                                "anyOf": [
+                                  {
+                                    "type": "integer"
+                                  },
+                                  {
+                                    "type": "null"
+                                  }
+                                ]
+                              },
+                              "periodUnit": {
+                                "anyOf": [
+                                  {
+                                    "type": "string",
+                                    "enum": [
+                                      "BARS",
+                                      "CALENDAR_WEEKS"
+                                    ]
+                                  },
+                                  {
+                                    "type": "null"
+                                  }
+                                ]
+                              },
+                              "priceField": {
+                                "anyOf": [
+                                  {
+                                    "type": "string",
+                                    "enum": [
+                                      "HIGH",
+                                      "LOW"
+                                    ]
+                                  },
+                                  {
+                                    "type": "null"
+                                  }
+                                ]
+                              },
+                              "comparison": {
+                                "anyOf": [
+                                  {
+                                    "type": "string",
+                                    "enum": [
+                                      "GT",
+                                      "LT",
+                                      "GTE",
+                                      "LTE",
+                                      "CROSS_ABOVE",
+                                      "CROSS_BELOW"
+                                    ]
+                                  },
+                                  {
+                                    "type": "null"
+                                  }
+                                ]
+                              }
+                            },
+                            "required": [
+                              "type",
+                              "period",
+                              "periodUnit",
+                              "priceField",
+                              "comparison"
+                            ],
+                            "additionalProperties": false
+                          },
+                          {
+                            "type": "object",
+                            "properties": {
+                              "type": {
+                                "type": "string",
+                                "enum": [
+                                  "MA_COMPARE"
+                                ]
+                              },
+                              "averageType": {
+                                "anyOf": [
+                                  {
+                                    "type": "string",
+                                    "enum": [
+                                      "SMA",
+                                      "EMA"
+                                    ]
+                                  },
+                                  {
+                                    "type": "null"
+                                  }
+                                ]
+                              },
+                              "shortPeriod": {
+                                "anyOf": [
+                                  {
+                                    "type": "integer"
+                                  },
+                                  {
+                                    "type": "null"
+                                  }
+                                ]
+                              },
+                              "longPeriod": {
+                                "anyOf": [
+                                  {
+                                    "type": "integer"
+                                  },
+                                  {
+                                    "type": "null"
+                                  }
+                                ]
+                              },
+                              "comparison": {
+                                "anyOf": [
+                                  {
+                                    "type": "string",
+                                    "enum": [
+                                      "GT",
+                                      "LT",
+                                      "GTE",
+                                      "LTE",
+                                      "CROSS_ABOVE",
+                                      "CROSS_BELOW"
+                                    ]
+                                  },
+                                  {
+                                    "type": "null"
+                                  }
+                                ]
+                              }
+                            },
+                            "required": [
+                              "type",
+                              "averageType",
+                              "shortPeriod",
+                              "longPeriod",
+                              "comparison"
+                            ],
+                            "additionalProperties": false
+                          },
+                          {
+                            "type": "object",
+                            "properties": {
+                              "type": {
+                                "type": "string",
+                                "enum": [
+                                  "PRICE_MA"
+                                ]
+                              },
+                              "averageType": {
+                                "anyOf": [
+                                  {
+                                    "type": "string",
+                                    "enum": [
+                                      "SMA",
+                                      "EMA"
+                                    ]
+                                  },
+                                  {
+                                    "type": "null"
+                                  }
+                                ]
+                              },
+                              "period": {
+                                "anyOf": [
+                                  {
+                                    "type": "integer"
+                                  },
+                                  {
+                                    "type": "null"
+                                  }
+                                ]
+                              },
+                              "comparison": {
+                                "anyOf": [
+                                  {
+                                    "type": "string",
+                                    "enum": [
+                                      "GT",
+                                      "LT",
+                                      "GTE",
+                                      "LTE",
+                                      "CROSS_ABOVE",
+                                      "CROSS_BELOW"
+                                    ]
+                                  },
+                                  {
+                                    "type": "null"
+                                  }
+                                ]
+                              }
+                            },
+                            "required": [
+                              "type",
+                              "averageType",
+                              "period",
+                              "comparison"
+                            ],
+                            "additionalProperties": false
+                          },
+                          {
+                            "type": "object",
+                            "properties": {
+                              "type": {
+                                "type": "string",
+                                "enum": [
+                                  "ATR_BREAKOUT"
+                                ]
+                              },
+                              "method": {
+                                "anyOf": [
+                                  {
+                                    "type": "string",
+                                    "enum": [
+                                      "SIMPLE",
+                                      "WILDER"
+                                    ]
+                                  },
+                                  {
+                                    "type": "null"
+                                  }
+                                ]
+                              },
+                              "period": {
+                                "anyOf": [
+                                  {
+                                    "type": "integer"
+                                  },
+                                  {
+                                    "type": "null"
+                                  }
+                                ]
+                              },
+                              "multiplier": {
+                                "anyOf": [
+                                  {
+                                    "type": "number"
+                                  },
+                                  {
+                                    "type": "null"
+                                  }
+                                ]
+                              },
+                              "comparison": {
+                                "anyOf": [
+                                  {
+                                    "type": "string",
+                                    "enum": [
+                                      "GT",
+                                      "LT",
+                                      "GTE",
+                                      "LTE",
+                                      "CROSS_ABOVE",
+                                      "CROSS_BELOW"
+                                    ]
+                                  },
+                                  {
+                                    "type": "null"
+                                  }
+                                ]
+                              }
+                            },
+                            "required": [
+                              "type",
+                              "method",
                               "period",
                               "multiplier",
                               "comparison"
@@ -459,6 +737,283 @@
                               "comparison"
                             ],
                             "additionalProperties": false
+                          },
+                          {
+                            "type": "object",
+                            "properties": {
+                              "type": {
+                                "type": "string",
+                                "enum": [
+                                  "RANGE_BREAKOUT"
+                                ]
+                              },
+                              "period": {
+                                "anyOf": [
+                                  {
+                                    "type": "integer"
+                                  },
+                                  {
+                                    "type": "null"
+                                  }
+                                ]
+                              },
+                              "periodUnit": {
+                                "anyOf": [
+                                  {
+                                    "type": "string",
+                                    "enum": [
+                                      "BARS",
+                                      "CALENDAR_WEEKS"
+                                    ]
+                                  },
+                                  {
+                                    "type": "null"
+                                  }
+                                ]
+                              },
+                              "priceField": {
+                                "anyOf": [
+                                  {
+                                    "type": "string",
+                                    "enum": [
+                                      "HIGH",
+                                      "LOW"
+                                    ]
+                                  },
+                                  {
+                                    "type": "null"
+                                  }
+                                ]
+                              },
+                              "comparison": {
+                                "anyOf": [
+                                  {
+                                    "type": "string",
+                                    "enum": [
+                                      "GT",
+                                      "LT",
+                                      "GTE",
+                                      "LTE",
+                                      "CROSS_ABOVE",
+                                      "CROSS_BELOW"
+                                    ]
+                                  },
+                                  {
+                                    "type": "null"
+                                  }
+                                ]
+                              }
+                            },
+                            "required": [
+                              "type",
+                              "period",
+                              "periodUnit",
+                              "priceField",
+                              "comparison"
+                            ],
+                            "additionalProperties": false
+                          },
+                          {
+                            "type": "object",
+                            "properties": {
+                              "type": {
+                                "type": "string",
+                                "enum": [
+                                  "MA_COMPARE"
+                                ]
+                              },
+                              "averageType": {
+                                "anyOf": [
+                                  {
+                                    "type": "string",
+                                    "enum": [
+                                      "SMA",
+                                      "EMA"
+                                    ]
+                                  },
+                                  {
+                                    "type": "null"
+                                  }
+                                ]
+                              },
+                              "shortPeriod": {
+                                "anyOf": [
+                                  {
+                                    "type": "integer"
+                                  },
+                                  {
+                                    "type": "null"
+                                  }
+                                ]
+                              },
+                              "longPeriod": {
+                                "anyOf": [
+                                  {
+                                    "type": "integer"
+                                  },
+                                  {
+                                    "type": "null"
+                                  }
+                                ]
+                              },
+                              "comparison": {
+                                "anyOf": [
+                                  {
+                                    "type": "string",
+                                    "enum": [
+                                      "GT",
+                                      "LT",
+                                      "GTE",
+                                      "LTE",
+                                      "CROSS_ABOVE",
+                                      "CROSS_BELOW"
+                                    ]
+                                  },
+                                  {
+                                    "type": "null"
+                                  }
+                                ]
+                              }
+                            },
+                            "required": [
+                              "type",
+                              "averageType",
+                              "shortPeriod",
+                              "longPeriod",
+                              "comparison"
+                            ],
+                            "additionalProperties": false
+                          },
+                          {
+                            "type": "object",
+                            "properties": {
+                              "type": {
+                                "type": "string",
+                                "enum": [
+                                  "PRICE_MA"
+                                ]
+                              },
+                              "averageType": {
+                                "anyOf": [
+                                  {
+                                    "type": "string",
+                                    "enum": [
+                                      "SMA",
+                                      "EMA"
+                                    ]
+                                  },
+                                  {
+                                    "type": "null"
+                                  }
+                                ]
+                              },
+                              "period": {
+                                "anyOf": [
+                                  {
+                                    "type": "integer"
+                                  },
+                                  {
+                                    "type": "null"
+                                  }
+                                ]
+                              },
+                              "comparison": {
+                                "anyOf": [
+                                  {
+                                    "type": "string",
+                                    "enum": [
+                                      "GT",
+                                      "LT",
+                                      "GTE",
+                                      "LTE",
+                                      "CROSS_ABOVE",
+                                      "CROSS_BELOW"
+                                    ]
+                                  },
+                                  {
+                                    "type": "null"
+                                  }
+                                ]
+                              }
+                            },
+                            "required": [
+                              "type",
+                              "averageType",
+                              "period",
+                              "comparison"
+                            ],
+                            "additionalProperties": false
+                          },
+                          {
+                            "type": "object",
+                            "properties": {
+                              "type": {
+                                "type": "string",
+                                "enum": [
+                                  "ATR_BREAKOUT"
+                                ]
+                              },
+                              "method": {
+                                "anyOf": [
+                                  {
+                                    "type": "string",
+                                    "enum": [
+                                      "SIMPLE",
+                                      "WILDER"
+                                    ]
+                                  },
+                                  {
+                                    "type": "null"
+                                  }
+                                ]
+                              },
+                              "period": {
+                                "anyOf": [
+                                  {
+                                    "type": "integer"
+                                  },
+                                  {
+                                    "type": "null"
+                                  }
+                                ]
+                              },
+                              "multiplier": {
+                                "anyOf": [
+                                  {
+                                    "type": "number"
+                                  },
+                                  {
+                                    "type": "null"
+                                  }
+                                ]
+                              },
+                              "comparison": {
+                                "anyOf": [
+                                  {
+                                    "type": "string",
+                                    "enum": [
+                                      "GT",
+                                      "LT",
+                                      "GTE",
+                                      "LTE",
+                                      "CROSS_ABOVE",
+                                      "CROSS_BELOW"
+                                    ]
+                                  },
+                                  {
+                                    "type": "null"
+                                  }
+                                ]
+                              }
+                            },
+                            "required": [
+                              "type",
+                              "method",
+                              "period",
+                              "multiplier",
+                              "comparison"
+                            ],
+                            "additionalProperties": false
                           }
                         ]
                       }
@@ -570,13 +1125,216 @@
                           "type": "null"
                         }
                       ]
+                    },
+                    "trailingStop": {
+                      "anyOf": [
+                        {
+                          "type": "object",
+                          "properties": {
+                            "rate": {
+                              "anyOf": [
+                                {
+                                  "type": "number"
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
+                            },
+                            "peakBasis": {
+                              "anyOf": [
+                                {
+                                  "type": "string",
+                                  "enum": [
+                                    "CLOSE",
+                                    "HIGH"
+                                  ]
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
+                            }
+                          },
+                          "required": [
+                            "rate",
+                            "peakBasis"
+                          ],
+                          "additionalProperties": false
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "atrStop": {
+                      "anyOf": [
+                        {
+                          "type": "object",
+                          "properties": {
+                            "method": {
+                              "anyOf": [
+                                {
+                                  "type": "string",
+                                  "enum": [
+                                    "SIMPLE",
+                                    "WILDER"
+                                  ]
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
+                            },
+                            "period": {
+                              "anyOf": [
+                                {
+                                  "type": "integer"
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
+                            },
+                            "multiplier": {
+                              "anyOf": [
+                                {
+                                  "type": "number"
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
+                            }
+                          },
+                          "required": [
+                            "method",
+                            "period",
+                            "multiplier"
+                          ],
+                          "additionalProperties": false
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
                     }
                   },
                   "required": [
                     "stopLoss",
                     "takeProfit",
                     "timeExit",
-                    "trailing"
+                    "trailing",
+                    "trailingStop",
+                    "atrStop"
+                  ],
+                  "additionalProperties": false
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "portfolio": {
+              "anyOf": [
+                {
+                  "type": "object",
+                  "properties": {
+                    "market": {
+                      "anyOf": [
+                        {
+                          "type": "string",
+                          "enum": [
+                            "KOSPI",
+                            "KOSDAQ",
+                            "KOSPI_KOSDAQ"
+                          ]
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "lookbackMonths": {
+                      "anyOf": [
+                        {
+                          "type": "integer"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "topN": {
+                      "anyOf": [
+                        {
+                          "type": "integer"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "smaPeriod": {
+                      "anyOf": [
+                        {
+                          "type": "integer"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "selectionOrder": {
+                      "anyOf": [
+                        {
+                          "type": "string",
+                          "enum": [
+                            "FILTER_THEN_RANK",
+                            "RANK_THEN_FILTER"
+                          ]
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "rebalanceTiming": {
+                      "anyOf": [
+                        {
+                          "type": "string",
+                          "enum": [
+                            "WEEK_START",
+                            "WEEK_END"
+                          ]
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "weighting": {
+                      "anyOf": [
+                        {
+                          "type": "string",
+                          "enum": [
+                            "EQUAL_SLOTS"
+                          ]
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    }
+                  },
+                  "required": [
+                    "market",
+                    "lookbackMonths",
+                    "topN",
+                    "smaPeriod",
+                    "selectionOrder",
+                    "rebalanceTiming",
+                    "weighting"
                   ],
                   "additionalProperties": false
                 },
@@ -592,7 +1350,8 @@
             "originalPrompt",
             "entry",
             "exit",
-            "risk"
+            "risk",
+            "portfolio"
           ],
           "additionalProperties": false
         },

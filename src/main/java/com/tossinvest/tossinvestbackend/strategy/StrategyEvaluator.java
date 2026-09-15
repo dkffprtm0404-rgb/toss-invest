@@ -37,6 +37,7 @@ public class StrategyEvaluator {
         private final Map<Condition, Series> indicators = new HashMap<>();
         private final Map<Condition, Integer> warmups = new HashMap<>();
         private final int requiredWarmupBars;
+        private final List<BigDecimal> stopAtr;
 
         private record Series(List<BigDecimal> actual, List<BigDecimal> reference, Comparison comparison) { }
 
@@ -48,20 +49,50 @@ public class StrategyEvaluator {
             prepareGroup(strategy.entry(), closes, volumes);
             prepareGroup(strategy.exit(), closes, volumes);
             var periods = strategy.entry().conditions().stream().mapToInt(warmups::get);
-            requiredWarmupBars = strategy.entry().operator() == Operator.OR
+            int entryWarmup = strategy.entry().operator() == Operator.OR
                     ? periods.min().orElse(0) : periods.max().orElse(0);
+            AtrStop stop = strategy.risk() == null ? null : strategy.risk().atrStop();
+            stopAtr = stop == null ? null : StrategyIndicators.atr(bars, stop.period(), stop.method());
+            requiredWarmupBars = stop == null ? entryWarmup : Math.max(entryWarmup, stop.period() + 1);
         }
 
         public int requiredWarmupBars() { return requiredWarmupBars; }
 
+        public int requiredWarmupBars(boolean nextOpen) {
+            if (!nextOpen || stopAtr == null) return requiredWarmupBars;
+            var periods = strategy.entry().conditions().stream().mapToInt(warmups::get);
+            int entryWarmup = strategy.entry().operator() == Operator.OR ? periods.min().orElse(0) : periods.max().orElse(0);
+            return Math.max(entryWarmup, strategy.risk().atrStop().period());
+        }
+
         public boolean entryReady(int index) {
+            return entryReady(index, false);
+        }
+
+        public boolean entryReady(int index, boolean nextOpen) {
+            int atrIndex = nextOpen ? index : index - 1;
+            if (stopAtr != null && (atrIndex < 0 || stopAtr.get(atrIndex) == null)) return false;
             var conditions = strategy.entry().conditions().stream();
             return strategy.entry().operator() == Operator.OR
                     ? conditions.anyMatch(c -> ready(indicators.get(c), index))
                     : conditions.allMatch(c -> ready(indicators.get(c), index));
         }
 
-        public Decision entry(int index) { return group(strategy.entry(), "entry", index, "ENTRY_CONDITIONS"); }
+        public Decision entry(int index) { return entry(index, false); }
+
+        public Decision entry(int index, boolean nextOpen) {
+            if (!entryReady(index, nextOpen)) return new Decision(false, "NO_SIGNAL", List.of());
+            return group(strategy.entry(), "entry", index, "ENTRY_CONDITIONS");
+        }
+
+        public BigDecimal atrStopPrice(int entryIndex, BigDecimal entryPrice) {
+            if (stopAtr == null) return null;
+            if (entryIndex < 1 || stopAtr.get(entryIndex - 1) == null)
+                throw new IllegalArgumentException("진입 직전 ATR 계산에 필요한 일봉이 부족합니다.");
+            BigDecimal price = entryPrice.subtract(stopAtr.get(entryIndex - 1).multiply(strategy.risk().atrStop().multiplier()));
+            if (price.signum() <= 0) throw new IllegalArgumentException("ATR 손절 기준가가 0 이하입니다. 기간·배수·가격 데이터를 확인해 주세요.");
+            return price;
+        }
 
         public Decision exit(int index, PositionContext position) {
             BigDecimal price = bars.get(index).close();
@@ -72,6 +103,15 @@ public class StrategyEvaluator {
                 boolean trailingActive = risk.trailing() != null && position.peakPrice().compareTo(activationPrice) >= 0;
                 if (risk.stopLoss() != null && price.compareTo(targetPrice(position, risk.stopLoss().rate())) <= 0)
                     return riskDecision("STOP_LOSS", "risk.stopLoss.rate", price, targetPrice(position, risk.stopLoss().rate()));
+                if (risk.atrStop() != null) {
+                    int entryIndex = index - position.holdingBars();
+                    BigDecimal stopPrice = atrStopPrice(entryIndex, position.entryPrice());
+                    if (price.compareTo(stopPrice) <= 0)
+                        return new Decision(true, "ATR_STOP_LOSS", List.of(
+                                new Evidence("risk.atrStop", "ATR_STOP_LOSS", price, stopPrice, null, null, true),
+                                new Evidence("risk.atrStop.entryAtr", "ENTRY_ATR", stopAtr.get(entryIndex - 1),
+                                        risk.atrStop().multiplier(), null, null, true)));
+                }
                 if (risk.takeProfit() != null && price.compareTo(targetPrice(position, risk.takeProfit().rate())) >= 0)
                     return riskDecision("TAKE_PROFIT", "risk.takeProfit.rate", price, targetPrice(position, risk.takeProfit().rate()));
                 if (risk.timeExit() != null && position.holdingBars() > risk.timeExit().days() && !trailingActive)
@@ -86,6 +126,13 @@ public class StrategyEvaluator {
                                 new Evidence("risk.trailing", "TRAILING_STOP", price, stopPrice, null, null, true),
                                 new Evidence("risk.trailing.activation", "PEAK_PRICE", position.peakPrice(), activationPrice, null, null, true)));
                     }
+                }
+                if (risk.trailingStop() != null) {
+                    BigDecimal stopPrice = position.peakPrice().multiply(BigDecimal.ONE.add(risk.trailingStop().rate()));
+                    if (price.compareTo(stopPrice) <= 0)
+                        return new Decision(true, "TRAILING_STOP", List.of(
+                                new Evidence("risk.trailingStop", "TRAILING_STOP", price, stopPrice, null, null, true),
+                                new Evidence("risk.trailingStop.peakBasis", "PEAK_PRICE", position.peakPrice(), null, null, null, true)));
                 }
             }
             return group(strategy.exit(), "exit", index, "EXIT_CONDITIONS");
@@ -125,6 +172,21 @@ public class StrategyEvaluator {
                     }
                     series = new Series(volumes, thresholds, volume.comparison());
                     warmup = volume.period();
+                } else if (condition instanceof RangeBreakout range) {
+                    List<BigDecimal> references = StrategyIndicators.range(bars, range);
+                    series = new Series(closes, references, range.comparison());
+                    warmup = range.periodUnit() == PeriodUnit.BARS ? range.period() : firstAvailable(references);
+                    if (isCross(range.comparison())) warmup++;
+                } else if (condition instanceof MovingAverageCompare ma) {
+                    series = new Series(average(closes, ma.shortPeriod(), ma.averageType()),
+                            average(closes, ma.longPeriod(), ma.averageType()), ma.comparison());
+                    warmup = ma.longPeriod() - 1 + (isCross(ma.comparison()) ? 1 : 0);
+                } else if (condition instanceof PriceMovingAverage ma) {
+                    series = new Series(closes, average(closes, ma.period(), ma.averageType()), ma.comparison());
+                    warmup = ma.period() - 1 + (isCross(ma.comparison()) ? 1 : 0);
+                } else if (condition instanceof AtrBreakout atr) {
+                    series = new Series(closes, StrategyIndicators.atrThreshold(bars, atr), atr.comparison());
+                    warmup = atr.period() + 1 + (isCross(atr.comparison()) ? 1 : 0);
                 } else {
                     throw new IllegalArgumentException("Unsupported condition");
                 }
@@ -138,6 +200,11 @@ public class StrategyEvaluator {
                     : TechnicalIndicatorCalculator.emaSeries(closes, period);
         }
 
+        private int firstAvailable(List<BigDecimal> series) {
+            for (int i = 0; i < series.size(); i++) if (series.get(i) != null) return i;
+            return series.size();
+        }
+
         private Decision group(ConditionGroup group, String path, int index, String reason) {
             if (group == null) return new Decision(false, "NO_SIGNAL", List.of());
             List<Evidence> evidence = new ArrayList<>();
@@ -149,7 +216,9 @@ public class StrategyEvaluator {
                 BigDecimal previousActual = index > 0 ? series.actual().get(index - 1) : null;
                 BigDecimal previousReference = index > 0 ? series.reference().get(index - 1) : null;
                 boolean passes = compare(series.comparison(), actual, reference, previousActual, previousReference);
-                String type = condition instanceof MovingAverageCross ? "MA_CROSS" : condition instanceof Rsi ? "RSI" : "VOLUME";
+                String type = condition instanceof MovingAverageCross ? "MA_CROSS" : condition instanceof Rsi ? "RSI"
+                        : condition instanceof Volume ? "VOLUME" : condition instanceof RangeBreakout ? "RANGE_BREAKOUT"
+                        : condition instanceof MovingAverageCompare ? "MA_COMPARE" : condition instanceof PriceMovingAverage ? "PRICE_MA" : "ATR_BREAKOUT";
                 evidence.add(new Evidence(path + ".conditions[" + i + "]", type, actual, reference,
                         previousActual, previousReference, passes));
                 matched = group.operator() == Operator.OR ? matched || passes : matched && passes;
@@ -162,6 +231,8 @@ public class StrategyEvaluator {
             if (actual == null || reference == null) return false;
             if (isCross(comparison) && (previousActual == null || previousReference == null)) return false;
             return switch (comparison) {
+                case GT -> actual.compareTo(reference) > 0;
+                case LT -> actual.compareTo(reference) < 0;
                 case GTE -> actual.compareTo(reference) >= 0;
                 case LTE -> actual.compareTo(reference) <= 0;
                 case CROSS_ABOVE -> previousActual.compareTo(previousReference) <= 0 && actual.compareTo(reference) > 0;

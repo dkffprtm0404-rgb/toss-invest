@@ -5,6 +5,42 @@ const path = require('node:path');
 const file = path.resolve(__dirname, '../../src/main/resources/static/js/strategy-workbench.js');
 const workbench = fs.existsSync(file) ? require(file) : {};
 
+test('draft selection retains independent edits and questions while clearing confirmation', () => {
+  assert.equal(typeof workbench.DraftCollection, 'function');
+  const collection = new workbench.DraftCollection();
+  const batch = {items:[
+    {title:'A', prompt:'A 원문', draft:{strategy:{name:'A',risk:{stopLoss:{rate:-0.05}}},ready:true,questions:[],unsupported:[]}},
+    {title:'B', prompt:'B 원문', draft:{strategy:{name:'B'},ready:false,questions:['손절률?'],unsupported:[]}}
+  ]};
+  collection.accept(batch);
+  const a = collection.select(0); a.state.draft.name = 'A 수정'; a.state.confirmed = true;
+  const b = collection.select(1); b.clarifications = '-9%';
+  b.state.accept({strategy:{name:'B',risk:{stopLoss:{rate:-0.09}}},ready:true,questions:[],unsupported:[]});
+  const restored = collection.select(0);
+  assert.equal(restored.state.draft.name, 'A 수정');
+  assert.equal(restored.state.draft.risk.stopLoss.rate, -0.05);
+  assert.equal(restored.state.confirmed, false);
+  assert.equal(collection.select(1).clarifications, '-9%');
+  assert.equal(batch.items[0].draft.strategy.name, 'A', 'editing a draft must not mutate the response snapshot');
+  assert.throws(() => collection.select(99));
+});
+
+test('editing extended rules upgrades only the draft contract and invalidates confirmation', () => {
+  const old = { schemaVersion: 1, name: '이전 전략', entry: { conditions: [{ type: 'VOLUME' }] } };
+  const state = new workbench.DraftState();
+  state.accept({ strategy: structuredClone(old), ready: true });
+  state.draft.name = '이름 수정'; state.changed();
+  assert.equal(state.draft.schemaVersion, 1);
+  state.draft.entry.conditions.push({ type: 'RANGE_BREAKOUT' }); state.confirmed = true; state.changed();
+  assert.equal(state.draft.schemaVersion, 2);
+  assert.equal(state.confirmed, false);
+  assert.equal(old.schemaVersion, 1);
+  for (const key of ['atrStop', 'trailingStop']) {
+    state.accept({ strategy: { ...structuredClone(old), risk: { [key]: {} } }, ready: false });
+    state.changed(); assert.equal(state.draft.schemaVersion, 2);
+  }
+});
+
 test('saved combined prompts over 6000 characters reopen as two inputs without changing their text', () => {
   assert.equal(typeof workbench.splitSavedPrompt, 'function');
   const delimiter = '\n\n[보완 입력]\n';

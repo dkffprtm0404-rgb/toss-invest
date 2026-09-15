@@ -6,6 +6,8 @@ import org.springframework.data.jpa.repository.Query;
 import java.util.List;
 
 public interface CandleRepository extends JpaRepository<CandleEntity, CandleEntity.CandleId> {
+    long countBySymbolInAndTimestampGreaterThanEqualAndTimestampLessThan(List<String> symbols,long start,long end);
+    List<CandleEntity> findBySymbolInAndTimestampGreaterThanEqualAndTimestampLessThanOrderBySymbolAscTimestampAsc(List<String> symbols,long start,long end);
 
     List<CandleEntity> findBySymbolOrderByTimestampAsc(String symbol);
 

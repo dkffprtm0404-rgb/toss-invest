@@ -11,7 +11,7 @@
   const number = value => value == null ? '—' : Number(value).toLocaleString('ko-KR', { maximumFractionDigits: 8 });
   const rate = value => value == null ? '—' : number(Number(value) * 100) + '%';
   const date = value => value == null ? '—' : new Date(value).toLocaleString('ko-KR', { timeZone: 'Asia/Seoul' });
-  const reason = value => ({ ENTRY_CONDITIONS: '진입 조건', EXIT_CONDITIONS: '청산 조건', STOP_LOSS: '손절', TAKE_PROFIT: '익절', TIME_EXIT: '보유 봉 수 초과', TRAILING_STOP: '트레일링 청산', END_OF_DATA: '데이터 종료' })[value] || value || '—';
+  const reason = value => ({ ENTRY_CONDITIONS: '진입 조건', EXIT_CONDITIONS: '청산 조건', STOP_LOSS: '손절', ATR_STOP_LOSS: 'ATR 손절', TAKE_PROFIT: '익절', TIME_EXIT: '보유 봉 수 초과', TRAILING_STOP: '트레일링 청산', END_OF_DATA: '데이터 종료' })[value] || value || '—';
   function pairs(parent, entries) {
     const dl = node('dl', null, 'sw-metrics');
     entries.forEach(([label, value]) => { const entry = node('div'); entry.append(node('dt', label), node('dd', value ?? '—')); dl.append(entry); });

@@ -101,6 +101,7 @@ public record BacktestAnalysis(long runId, String status, Metrics metrics, List<
     private static String reason(String value) {
         return switch (value) {
             case "STOP_LOSS" -> "손절";
+            case "ATR_STOP_LOSS" -> "ATR 손절";
             case "TAKE_PROFIT" -> "익절";
             case "TIME_EXIT" -> "최대 보유기간 초과";
             case "TRAILING_STOP" -> "트레일링 스탑";

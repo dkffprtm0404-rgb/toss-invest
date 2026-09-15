@@ -1,10 +1,14 @@
 # 사용자 전략 백테스트 API
 
+형식 3 포트폴리오는 별도 [포트폴리오 실행 API](strategy-portfolio.md)를 사용한다. 아래 개별 종목 API에 포트폴리오를 보내면 검증 오류를 반환한다.
+
 3단계 구현 안내. 기준: [기획서](project-plan.md), [전략 명세](strategy-spec.md).
 
 `POST /api/backtest/run-strategy`는 사용자 전략과 실행 설정을 받아 **DB에 저장된 일봉**으로 실행한다. 외부 시세 수집이나 주문을 호출하지 않는다. 기존 `/run`, `/run-baseline`, `/run-optimal`, `/compare`는 기존 점수제 방식으로 유지된다.
 
 4단계에서 추가한 전략 버전 저장·실행 이력 조회는 [저장 API 안내](strategy-persistence.md)를 따른다. 이 문서의 직접 실행 API는 이력을 저장하지 않는다.
+
+2026-09-14부터 형식 2의 [국내주식 확장 조건](strategy-expansion.md)도 같은 API에서 실행한다. 고가·저가를 지표에 사용하더라도 신호·손절은 종가 확인 기준이다. 이전 형식 1의 실행 방식은 유지된다.
 
 ## 실행 예제
 

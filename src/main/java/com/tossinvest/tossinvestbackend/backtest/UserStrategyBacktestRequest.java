@@ -14,6 +14,7 @@ public record UserStrategyBacktestRequest(StrategyDefinition strategy, String sy
 
     public void requireValid() {
         List<StrategyValidator.Issue> issues = new ArrayList<>(new StrategyValidator().validate(strategy));
+        if (strategy != null && strategy.portfolio() != null) issues.add(issue("strategy.portfolio", "INVALID", "포트폴리오 실행 화면/API를 사용해 주세요."));
         if (symbol == null || symbol.isBlank()) issues.add(issue("symbol", "REQUIRED", "Supply a symbol."));
         else if (!symbol.matches("[A-Za-z0-9]{1,32}")) issues.add(issue("symbol", "INVALID", "Use 1 to 32 alphanumeric characters."));
         date(startDate, "startDate", issues);

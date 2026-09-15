@@ -2,6 +2,7 @@ package com.tossinvest.tossinvestbackend.backtest;
 
 import com.tossinvest.tossinvestbackend.strategy.StrategyBar;
 import com.tossinvest.tossinvestbackend.strategy.StrategyEvaluator;
+import com.tossinvest.tossinvestbackend.strategy.StrategyDefinition.PeakBasis;
 import org.springframework.stereotype.Component;
 
 import java.math.BigDecimal;
@@ -35,13 +36,17 @@ public class UserStrategyBacktestEngine {
         Position position = null;
         Order pending = null;
         boolean entryWasReady = false;
+        boolean nextOpen = request.executionMode() == NEXT_DAY_OPEN;
         for (int i = first; i < bars.size(); i++) {
             StrategyBar bar = bars.get(i);
-            entryWasReady |= evaluation.entryReady(i);
+            entryWasReady |= evaluation.entryReady(i, nextOpen);
             // The pending order was decided at an earlier close. No current close is read to fill it.
             if (pending != null) {
                 Fill fill = fill(pending, bar, true);
-                if (pending.buy()) position = new Position(i, fill);
+                if (pending.buy()) {
+                    validateAtrEntry(evaluation, i, fill);
+                    position = new Position(i, fill);
+                }
                 else {
                     trades.add(position.close(i, fill));
                     position = null;
@@ -49,7 +54,9 @@ public class UserStrategyBacktestEngine {
                 pending = null;
             }
             if (position != null) {
-                position.peak = position.peak.max(bar.close());
+                boolean highPeak = request.strategy().risk() != null && request.strategy().risk().trailingStop() != null
+                        && request.strategy().risk().trailingStop().peakBasis() == PeakBasis.HIGH;
+                position.peak = position.peak.max(highPeak ? bar.high() : bar.close());
                 Decision decision = evaluation.exit(i, new PositionContext(position.entry.price(), i - position.index, position.peak));
                 if (decision.matched()) {
                     Order order = new Order(false, bar, decision);
@@ -62,11 +69,15 @@ public class UserStrategyBacktestEngine {
                 // Also prevents same-close re-entry and entry-bar close-mode exit.
                 continue;
             }
-            Decision decision = evaluation.entry(i);
+            Decision decision = evaluation.entry(i, nextOpen);
             if (decision.matched()) {
                 Order order = new Order(true, bar, decision);
                 if (request.executionMode() == NEXT_DAY_OPEN) pending = order;
-                else position = new Position(i, fill(order, bar, false));
+                else {
+                    Fill entry = fill(order, bar, false);
+                    validateAtrEntry(evaluation, i, entry);
+                    position = new Position(i, entry);
+                }
             }
         }
         OpenPosition open = null;
@@ -80,10 +91,15 @@ public class UserStrategyBacktestEngine {
                 pending.decision().evidence(), "NO_NEXT_BAR");
         String status = candleCount == 0 ? "NO_DATA" : !entryWasReady ? "INSUFFICIENT_DATA"
                 : trades.isEmpty() && open == null && unfilled == null ? "NO_TRADES" : "COMPLETED";
-        return new UserStrategyBacktestResult(request, status, candleCount, first, evaluation.requiredWarmupBars(),
+        return new UserStrategyBacktestResult(request, status, candleCount, first, evaluation.requiredWarmupBars(nextOpen),
                 candleCount == 0 ? null : date(bars.get(first).timestamp()),
                 candleCount == 0 ? null : date(bars.get(bars.size() - 1).timestamp()),
                 Metrics.from(request.symbol(), trades), trades, open, unfilled, assumptions(request));
+    }
+
+    private void validateAtrEntry(Evaluation evaluation, int index, Fill entry) {
+        try { evaluation.atrStopPrice(index, entry.price()); }
+        catch (IllegalArgumentException ex) { throw new DataException(entry.executionBarTimestamp(), ex.getMessage()); }
     }
 
     private Fill fill(Order order, StrategyBar execution, boolean atOpen) {
@@ -111,7 +127,7 @@ public class UserStrategyBacktestEngine {
                 throw new DataException(c.getTimestamp(), "OHLC prices are inconsistent.");
             if (c.getVolume() == null || c.getVolume().signum() < 0)
                 throw new DataException(c.getTimestamp(), "Volume must be non-negative.");
-            bars.add(new StrategyBar(c.getTimestamp(), c.getOpenPrice(), c.getClosePrice(), c.getVolume()));
+            bars.add(new StrategyBar(c.getTimestamp(), c.getOpenPrice(), c.getClosePrice(), c.getVolume(), c.getHighPrice(), c.getLowPrice()));
             previous = day;
         }
         return bars;
@@ -127,13 +143,20 @@ public class UserStrategyBacktestEngine {
     }
 
     private List<String> assumptions(UserStrategyBacktestRequest request) {
-        return List.of("DAILY_LONG_ONLY_SINGLE_POSITION", "NO_CAPITAL_QUANTITY_OR_COST_MODEL",
+        List<String> assumptions = new ArrayList<>(List.of("DAILY_LONG_ONLY_SINGLE_POSITION", "NO_CAPITAL_QUANTITY_OR_COST_MODEL",
                 "CLOSED_TRADE_SUM_NOT_COMPOUND_ACCOUNT_RETURN", "TRADE_DRAWDOWN_NOT_DAILY_EQUITY_DRAWDOWN",
                 "TRADE_SHARPE_NOT_ANNUALIZED_ZERO_RISK_FREE", "OPEN_POSITION_EXCLUDED_FROM_CLOSED_METRICS",
                 "HOLDING_BARS_NOT_CALENDAR_DAYS", "AVAILABLE_HISTORY_USED_FOR_INDICATOR_WARMUP",
                 "KST_DAILY_TIMESTAMPS_ASSUMED_OPEN_09_00_CLOSE_15_30", "MISSING_MARKET_DAYS_NOT_INFERRED",
                 "SIMPLE_RSI_FLAT_WINDOW_IS_100", "ZERO_VOLUME_BAR_CANNOT_FILL",
-                request.executionMode() == SAME_DAY_CLOSE ? "SAME_CLOSE_FILL_IS_A_SIMULATION_ASSUMPTION" : "NEXT_AVAILABLE_BAR_OPEN_WITHIN_REQUESTED_PERIOD");
+                request.executionMode() == SAME_DAY_CLOSE ? "SAME_CLOSE_FILL_IS_A_SIMULATION_ASSUMPTION" : "NEXT_AVAILABLE_BAR_OPEN_WITHIN_REQUESTED_PERIOD"));
+        if (Integer.valueOf(2).equals(request.strategy().schemaVersion())) {
+            assumptions.add("SIGNALS_AND_RISK_AT_DAILY_CLOSE_NOT_INTRADAY");
+            assumptions.add("RANGE_EXCLUDES_CURRENT_BAR_CALENDAR_WEEKS_USE_KST");
+            if (request.strategy().risk() != null && request.strategy().risk().atrStop() != null)
+                assumptions.add("ATR_STOP_FROZEN_FROM_BAR_BEFORE_ENTRY");
+        }
+        return assumptions;
     }
 
     private record Order(boolean buy, StrategyBar signal, Decision decision) { }

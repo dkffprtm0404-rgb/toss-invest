@@ -37,9 +37,9 @@ test('browser completes explicit save and run flow, locks edits, preserves missi
       }
       let data;
       if (url.pathname.endsWith('/status')) data = { ready: true, message: 'ChatGPT 준비 완료', model: 'test' };
-      else if (url.pathname.endsWith('/interpret')) {
+      else if (url.pathname.endsWith('/interpret-batch')) {
         await new Promise(resolve => setTimeout(resolve, 150));
-        data = { strategy: structuredClone(strategy), ready: true, issues: [], questions: [], unsupported: [] };
+        data = {items:[{title:strategy.name,prompt:strategy.originalPrompt,draft:{ strategy: structuredClone(strategy), ready: true, issues: [], questions: [], unsupported: [] }}],questions:[]};
       } else if (url.pathname.endsWith('/validate')) data = { strategy: body, ready: true, issues: [], questions: [], unsupported: [] };
       else if (url.pathname === '/api/strategies' && req.method() === 'POST') { hasSaved = true; saved.strategy = body; data = saved; }
       else if (url.pathname === '/api/strategies') data = hasSaved ? [saved] : [];
@@ -131,11 +131,12 @@ test('questions and unsupported rules need reinterpretation; failures clear conf
       let data; let status = 200;
       if (url.pathname.endsWith('/status')) data = { ready: true };
       else if (url.pathname === '/api/strategies') data = [];
-      else if (url.pathname.endsWith('/interpret')) {
+      else if (url.pathname.endsWith('/interpret') || url.pathname.endsWith('/interpret-batch')) {
         interpretations++;
         const draft = structuredClone(strategy);
         if (interpretations === 1) draft.entry.conditions[0].period = null;
         data = { strategy: draft, ready: interpretations > 1, issues: [], questions: interpretations === 1 ? ['기간은 몇 봉인가요?'] : [], unsupported: interpretations === 1 ? ['점수 필터'] : [] };
+        if (url.pathname.endsWith('/interpret-batch')) data = {items:[{title:draft.name,prompt:draft.originalPrompt,draft:data}],questions:[]};
       } else if (url.pathname.endsWith('/validate')) {
         status = failValidation ? 503 : 200;
         data = failValidation ? { code: 'TEST_UNAVAILABLE', message: '잠시 후 재시도하세요.' } : { ready: true, issues: [] };
@@ -153,7 +154,7 @@ test('questions and unsupported rules need reinterpretation; failures clear conf
     const confirm = page.getByLabel('원문·조건·위험 관리 설정을 검토했으며 이 내용으로 저장합니다.', { exact: true });
     assert.equal(await confirm.isDisabled(), true);
     await page.getByLabel('보완 입력 · 질문의 답이나 미지원 조건 수정', { exact: true }).fill('20봉이며 점수 필터는 제거');
-    await page.getByRole('button', { name: 'Codex로 조건 해석', exact: true }).click();
+    await page.getByRole('button', { name: '선택 전략 다시 해석', exact: true }).click();
     await confirm.check();
     failValidation = true;
     await page.getByRole('button', { name: '입력 조건 검증', exact: true }).click();

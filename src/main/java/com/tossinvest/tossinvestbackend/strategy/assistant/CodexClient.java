@@ -2,6 +2,7 @@ package com.tossinvest.tossinvestbackend.strategy.assistant;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.tossinvest.tossinvestbackend.backtest.BacktestExplanationService;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
@@ -39,12 +40,19 @@ public class CodexClient {
     public String interpret(String input) {
         return withSession(true, input, StrategyAssistantService.INSTRUCTIONS, "/codex/strategy-output.schema.json");
     }
+    public String interpretBatch(String input) {
+        return withSession(true, input, StrategyBatchService.INSTRUCTIONS, "/codex/strategy-output.schema.json", true);
+    }
     public String explain(String input) {
         return withSession(true, input, BacktestExplanationService.INSTRUCTIONS, "/codex/backtest-explanation.schema.json");
     }
     public String model() { return model; }
 
     private String withSession(boolean generate, String input, String instructions, String schemaResource) {
+        return withSession(generate, input, instructions, schemaResource, false);
+    }
+
+    private String withSession(boolean generate, String input, String instructions, String schemaResource, boolean batch) {
         if (!active.tryAcquire()) throw new AssistantException("CODEX_BUSY");
         Path directory = null;
         try {
@@ -77,6 +85,7 @@ public class CodexClient {
                     if (stream == null) throw new IOException("Missing schema");
                     schema = mapper.readTree(stream);
                 }
+                if (batch) schema = batchSchema(schema);
                 var started = session.rpc("turn/start", Map.of("threadId", threadId,
                         "input", List.of(Map.of("type", "text", "text", input)), "effort", "low",
                         "environments", List.of(), "outputSchema", schema,
@@ -123,5 +132,21 @@ public class CodexClient {
         String type = account.path("account").path("type").asText();
         if (type.isBlank()) throw new AssistantException("CODEX_LOGIN_REQUIRED");
         if (!type.equals("chatgpt")) throw new AssistantException("CODEX_API_KEY_NOT_ALLOWED");
+    }
+
+    static JsonNode batchSchema(JsonNode single) {
+        ObjectNode item = single.deepCopy();
+        ObjectNode properties = (ObjectNode) item.path("properties");
+        properties.putObject("title").put("type", "string");
+        properties.putObject("sourceText").put("type", "string");
+        ((com.fasterxml.jackson.databind.node.ArrayNode) item.path("required")).add("title").add("sourceText");
+        ObjectNode result = item.objectNode();
+        result.put("type", "object"); result.put("additionalProperties", false);
+        ObjectNode fields = result.putObject("properties");
+        fields.putObject("sharedContext").put("type", "string");
+        fields.putObject("items").put("type", "array").set("items", item);
+        fields.set("questions", single.path("properties").path("questions").deepCopy());
+        result.putArray("required").add("sharedContext").add("items").add("questions");
+        return result;
     }
 }

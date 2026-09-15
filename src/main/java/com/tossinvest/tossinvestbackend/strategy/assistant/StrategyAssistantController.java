@@ -13,8 +13,9 @@ public class StrategyAssistantController {
     private final CodexClient codex;
     private final StrategyAssistantService service;
     private final StrategyJson json;
-    public StrategyAssistantController(CodexClient codex, StrategyAssistantService service, StrategyJson json) {
-        this.codex = codex; this.service = service; this.json = json;
+    private final StrategyBatchService batch;
+    public StrategyAssistantController(CodexClient codex, StrategyAssistantService service, StrategyJson json, StrategyBatchService batch) {
+        this.codex = codex; this.service = service; this.json = json; this.batch = batch;
     }
     @GetMapping("/status")
     public CodexClient.Status status(HttpServletRequest request) {
@@ -29,6 +30,11 @@ public class StrategyAssistantController {
     public StrategyAssistantService.Draft validate(HttpServletRequest request, @RequestBody String body) throws JsonProcessingException {
         local(request); limit(body);
         return service.validate(json.read(body, StrategyDefinition.class));
+    }
+    @PostMapping(value = "/interpret-batch", consumes = "application/json")
+    public StrategyBatchService.Result interpretBatch(HttpServletRequest request, @RequestBody String body) throws JsonProcessingException {
+        local(request); limit(body);
+        return batch.interpret(json.read(body, StrategyBatchService.Request.class));
     }
     private static void limit(String body) {
         if (body.length() > 64000) throw new StrategyJson.InvalidRequestException();
