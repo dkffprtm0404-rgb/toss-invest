@@ -33,7 +33,7 @@ class StrategyValidatorTests {
     @Test
     void invalidValuesAndMissingGroupOperatorAreRejected() throws Exception {
         var issues = validator.validate(read("""
-                {"schemaVersion":4,"entry":{"conditions":[
+                {"schemaVersion":99,"entry":{"conditions":[
                  {"type":"MA_CROSS","averageType":"EMA","shortPeriod":20,"longPeriod":5,"direction":"UP"},
                  {"type":"RSI","method":"SIMPLE","period":0,"threshold":101,"comparison":"GTE"},
                  {"type":"VOLUME","period":501,"multiplier":0,"comparison":"CROSS_ABOVE"}]},

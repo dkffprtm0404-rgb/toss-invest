@@ -28,8 +28,13 @@ public class StrategyAssistantController {
     }
     @PostMapping(value = "/validate", consumes = "application/json")
     public StrategyAssistantService.Draft validate(HttpServletRequest request, @RequestBody String body) throws JsonProcessingException {
-        local(request); limit(body);
+        local(request); compositionLimit(body);
         return service.validate(json.read(body, StrategyDefinition.class));
+    }
+    @PostMapping(value = "/compose", consumes = "application/json")
+    public StrategyAssistantService.Draft compose(HttpServletRequest request, @RequestBody String body) throws JsonProcessingException {
+        local(request); compositionLimit(body);
+        return new StrategyComposer().compose(json.read(body, StrategyComposer.Request.class));
     }
     @PostMapping(value = "/interpret-batch", consumes = "application/json")
     public StrategyBatchService.Result interpretBatch(HttpServletRequest request, @RequestBody String body) throws JsonProcessingException {
@@ -38,6 +43,9 @@ public class StrategyAssistantController {
     }
     private static void limit(String body) {
         if (body.length() > 64000) throw new StrategyJson.InvalidRequestException();
+    }
+    private static void compositionLimit(String body) {
+        if (body.length() > 500000) throw new StrategyJson.InvalidRequestException();
     }
     private static boolean loopback(String host) {
         return host != null && Set.of("localhost", "127.0.0.1", "::1", "[::1]", "0:0:0:0:0:0:0:1")

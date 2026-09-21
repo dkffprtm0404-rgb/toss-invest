@@ -9,12 +9,16 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 
-/** Explicit daily rules. V2 adds OHLC indicators; V3 adds a separately executed relative-strength portfolio. */
+/** Explicit daily rules. V2 adds OHLC, V3 relative strength, V4 an independently executed composition. */
 public record StrategyDefinition(Integer schemaVersion, String name, String originalPrompt,
                                  ConditionGroup entry, ConditionGroup exit, Risk risk,
-                                 @JsonInclude(JsonInclude.Include.NON_NULL) RelativeStrength portfolio) {
+                                 @JsonInclude(JsonInclude.Include.NON_NULL) RelativeStrength portfolio,
+                                 @JsonInclude(JsonInclude.Include.NON_NULL) CompositionDefinition composition) {
     public StrategyDefinition(Integer schemaVersion, String name, String originalPrompt, ConditionGroup entry, ConditionGroup exit, Risk risk) {
         this(schemaVersion, name, originalPrompt, entry, exit, risk, null);
+    }
+    public StrategyDefinition(Integer schemaVersion, String name, String originalPrompt, ConditionGroup entry, ConditionGroup exit, Risk risk, RelativeStrength portfolio) {
+        this(schemaVersion, name, originalPrompt, entry, exit, risk, portfolio, null);
     }
     public enum Market { KOSPI, KOSDAQ, KOSPI_KOSDAQ }
     public enum SelectionOrder { FILTER_THEN_RANK, RANK_THEN_FILTER }

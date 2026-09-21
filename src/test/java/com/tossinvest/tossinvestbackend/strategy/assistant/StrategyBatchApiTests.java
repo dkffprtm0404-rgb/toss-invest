@@ -54,6 +54,9 @@ class StrategyBatchApiTests {
                 .andExpect(jsonPath("$.items[0].draft.questions.length()").value(0))
                 .andExpect(jsonPath("$.items[0].draft.strategy.originalPrompt").value("국내주식\nA 원문"))
                 .andExpect(jsonPath("$.items[1].draft.ready").value(false))
+                .andExpect(jsonPath("$.total.draft.strategy.schemaVersion").value(4))
+                .andExpect(jsonPath("$.total.draft.ready").value(false))
+                .andExpect(jsonPath("$.total.draft.strategy.composition.sources.length()").value(2))
                 .andExpect(jsonPath("$.items[1].draft.questions[0]").value("정확한 손절률은?"))
                 .andExpect(jsonPath("$.items[1].prompt").value("국내주식\n\n\nB 원문"));
         verify(codex, times(1)).interpretBatch(anyString());
@@ -91,6 +94,10 @@ class StrategyBatchApiTests {
         mvc.perform(post("/api/strategy-assistant/interpret-batch").header("X-Strategy-Local", "1")
                 .contentType(MediaType.APPLICATION_JSON).content(mapper.writeValueAsString(java.util.Map.of("prompt", context + text))))
                 .andExpect(status().isOk()).andExpect(jsonPath("$.items[0].prompt").value(context + text));
+        // A single extraction has no redundant composite.
+        mvc.perform(post("/api/strategy-assistant/interpret-batch").header("X-Strategy-Local", "1")
+                .contentType(MediaType.APPLICATION_JSON).content(mapper.writeValueAsString(java.util.Map.of("prompt", context + text))))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.total").doesNotExist());
     }
 
     private ObjectNode output(String context, String... texts) throws Exception {

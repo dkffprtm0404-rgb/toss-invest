@@ -116,42 +116,15 @@ public class PortfolioEngine {
                     "평가는 미청산 보유분을 포함합니다. 종료일 강제 청산은 하지 않습니다.",
                     request.executionMode()==NEXT_DAY_OPEN?"신호 다음 입력 거래일 시가 체결입니다. 이후 종가는 수량 결정에 사용하지 않습니다.":"신호 당일 종가 체결은 시뮬레이션 가정입니다."));
         }
-        boolean rebalance(int i) {
-            LocalDate day=calendar.get(i);
-            if (rule.rebalanceTiming()==RebalanceTiming.WEEK_START) return i>0 && !week(day).equals(week(calendar.get(i-1)));
-            return i+1<calendar.size() && !week(day).equals(week(calendar.get(i+1)));
-        }
-        Selection rank(int index,LocalDate day) {
-            LocalDate anchor=day.minusMonths(rule.lookbackMonths());
-            int base=Collections.binarySearch(calendar,anchor); if(base<0) base=-base-2;
-            List<Candidate> candidates=new ArrayList<>(); List<Excluded> excluded=new ArrayList<>();
-            for (String symbol : members.keySet()) {
-                boolean active=members.get(symbol).stream().anyMatch(m -> !day.isBefore(m.from()) && (m.to()==null || !day.isAfter(m.to()))
-                        && (rule.market()==Market.KOSPI_KOSDAQ || m.market()==rule.market()));
-                if (!active) { excluded.add(new Excluded(symbol,"대상 시장·편입 기간 밖")); continue; }
-                var series=prices.getOrDefault(symbol,Map.of()); var current=series.get(day);
-                if (current==null || current.getVolume().signum()==0 || base<0 || index+1<rule.smaPeriod() || !series.containsKey(calendar.get(base))) {
-                    excluded.add(new Excluded(symbol,"현재 봉·거래량 또는 수익률/SMA 준비 이력 부족")); continue;
-                }
-                BigDecimal sum=ZERO; boolean ready=true;
-                for (int j=index-rule.smaPeriod()+1;j<=index;j++) { var c=series.get(calendar.get(j)); if(c==null) {ready=false;break;} sum=sum.add(c.getClosePrice(),MC); }
-                if(!ready) { excluded.add(new Excluded(symbol,"SMA 구간 거래일 캔들 누락"));continue; }
-                BigDecimal sma=sum.divide(BigDecimal.valueOf(rule.smaPeriod()),MC);
-                if (rule.selectionOrder()==SelectionOrder.FILTER_THEN_RANK && current.getClosePrice().compareTo(sma)<=0) { excluded.add(new Excluded(symbol,"종가가 SMA 위에 있지 않음"));continue; }
-                candidates.add(new Candidate(symbol,current.getClosePrice().divide(series.get(calendar.get(base)).getClosePrice(),MC).subtract(ONE),current.getClosePrice(),sma));
-            }
-            candidates.sort(Comparator.comparing(Candidate::momentum).reversed().thenComparing(Candidate::symbol));
-            List<Ranked> ranked=new ArrayList<>();
-            for(int i=0;i<candidates.size();i++) {var c=candidates.get(i);ranked.add(new Ranked(c.symbol(),i+1,c.momentum(),c.close(),c.sma(),i<rule.topN()&&c.close().compareTo(c.sma())>0));}
-            return new Selection(day,List.copyOf(ranked),List.copyOf(excluded));
-        }
+        boolean rebalance(int i) { return PortfolioSelection.scheduled(calendar,i,rule.rebalanceTiming()); }
+        Selection rank(int index,LocalDate day) { return PortfolioSelection.rank(rule,calendar,members,prices,index); }
         void fill(Signal signal,LocalDate day,boolean open) {
             Map<String,Long> desired=new LinkedHashMap<>();
             if(signal.targets()==null) positions.forEach((s,p)->desired.put(s,p.quantity));
             else {
                 BigDecimal budget=valuation(day,open).divide(BigDecimal.valueOf(rule.topN()),MC);
                 for(String symbol:signal.targets()) {
-                    BigDecimal price=price(symbol,day,open).multiply(ONE.add(request.slippageRate()),MC).multiply(ONE.add(request.commissionRate()),MC);
+                    BigDecimal price=PortfolioCalculations.buyUnit(price(symbol,day,open),request.slippageRate(),request.commissionRate());
                     desired.put(symbol,shares(budget,price));
                 }
             }
@@ -164,7 +137,7 @@ public class PortfolioEngine {
                 long owned=positions.containsKey(e.getKey())?positions.get(e.getKey()).quantity:0;
                 long buy=e.getValue()-owned;
                 if(buy>0) {
-                    BigDecimal unit=price(e.getKey(),day,open).multiply(ONE.add(request.slippageRate()),MC).multiply(ONE.add(request.commissionRate()),MC);
+                    BigDecimal unit=PortfolioCalculations.buyUnit(price(e.getKey(),day,open),request.slippageRate(),request.commissionRate());
                     buy=Math.min(buy,shares(cash,unit));
                     if(buy>0) trade(e.getKey(),buy,true,day,signal.date(),open,"REBALANCE");
                 }
@@ -172,7 +145,7 @@ public class PortfolioEngine {
         }
         void trade(String symbol,long quantity,boolean buy,LocalDate day,LocalDate signal,boolean open,String reason) {
             var candle=bar(symbol,day); if(candle.getVolume().signum()==0) throw data(day,"거래량 0인 봉에 체결할 수 없습니다: "+symbol);
-            BigDecimal price=price(symbol,day,open).multiply(buy?ONE.add(request.slippageRate()):ONE.subtract(request.slippageRate()),MC);
+            BigDecimal price=PortfolioCalculations.executionPrice(price(symbol,day,open),request.slippageRate(),buy);
             BigDecimal amount=price.multiply(BigDecimal.valueOf(quantity),MC), fee=amount.multiply(request.commissionRate(),MC), tax=buy?ZERO:amount.multiply(request.taxRate(),MC);
             if(buy) {
                 cash=cash.subtract(amount.add(fee),MC); Position p=positions.get(symbol);
@@ -187,7 +160,7 @@ public class PortfolioEngine {
         CandleEntity bar(String symbol,LocalDate day) {var b=prices.getOrDefault(symbol,Map.of()).get(day);if(b==null)throw data(day,"보유 평가 또는 체결에 필요한 캔들이 없습니다: "+symbol);return b;}
     }
     private static boolean positive(BigDecimal value) {return value!=null&&value.signum()>0;}
-    private static long shares(BigDecimal budget,BigDecimal price) {try{return budget.divide(price,0,RoundingMode.DOWN).longValueExact();}catch(ArithmeticException e){throw data(null,"계산 수량이 허용 범위를 초과합니다.");}}
+    private static long shares(BigDecimal budget,BigDecimal price) {return PortfolioCalculations.shares(budget,price);}
     private static LocalDate week(LocalDate day) {return day.minusDays(day.getDayOfWeek().getValue()-1);}
     private static UserStrategyBacktestEngine.DataException data(LocalDate day,String message) {return new UserStrategyBacktestEngine.DataException(day==null?null:day.atStartOfDay(UserStrategyBacktestEngine.MARKET_ZONE).toInstant().toEpochMilli(),message);}
 }

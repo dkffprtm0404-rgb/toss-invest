@@ -35,7 +35,10 @@ public class StrategyBatchService {
     public record ItemOutput(String title, String sourceText, StrategyDefinition strategy, List<String> questions, List<String> unsupported) { }
     public record Output(String sharedContext, List<ItemOutput> items, List<String> questions) { }
     public record Item(String title, String prompt, StrategyAssistantService.Draft draft) { }
-    public record Result(List<Item> items, List<String> questions) { }
+    public record Result(List<Item> items, List<String> questions,
+                         @com.fasterxml.jackson.annotation.JsonInclude(com.fasterxml.jackson.annotation.JsonInclude.Include.NON_NULL) Item total) {
+        public Result(List<Item> items, List<String> questions) { this(items,questions,null); }
+    }
 
     public Result interpret(Request request) {
         if (request == null) throw new StrategyJson.InvalidRequestException();
@@ -69,7 +72,12 @@ public class StrategyBatchService {
             items.add(new Item(item.title(), prompt, draft));
         }
         if (!original.substring(cursor).isBlank()) throw invalid();
-        return new Result(List.copyOf(items), List.of());
+        Item total=null;
+        if(items.size()>1) {
+            var draft=new StrategyComposer().compose(new StrategyComposer.Request(items,"전체 토탈 · "+items.size()+"개"));
+            total=new Item(draft.strategy().name(),draft.strategy().originalPrompt(),draft);
+        }
+        return new Result(List.copyOf(items), List.of(),total);
     }
     private static AssistantException invalid() { return new AssistantException("CODEX_INVALID_RESPONSE"); }
 }

@@ -15,8 +15,10 @@ public class StrategyValidator {
     public List<Issue> validate(StrategyDefinition strategy) {
         List<Issue> issues = new ArrayList<>();
         if (required(strategy, "strategy", issues)) return List.copyOf(issues);
+        if (Integer.valueOf(4).equals(strategy.schemaVersion())) return new CompositionValidator().validate(strategy);
+        if (strategy.composition() != null) invalid("composition", "통합 조건은 전략 형식 버전 4가 필요합니다.", issues);
         if (!required(strategy.schemaVersion(), "schemaVersion", issues) && strategy.schemaVersion() != 1 && strategy.schemaVersion() != 2 && strategy.schemaVersion() != 3)
-            invalid("schemaVersion", "전략 형식 버전은 1, 2 또는 3이어야 합니다.", issues);
+            invalid("schemaVersion", "전략 형식 버전은 1, 2, 3 또는 4이어야 합니다.", issues);
         if (Integer.valueOf(1).equals(strategy.schemaVersion()) && usesExtensions(strategy))
             invalid("schemaVersion", "확장 조건과 위험 관리는 전략 형식 버전 2가 필요합니다.", issues);
         if (strategy.portfolio() == null) {

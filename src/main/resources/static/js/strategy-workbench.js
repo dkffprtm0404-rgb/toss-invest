@@ -56,7 +56,11 @@
   }
   class DraftState {
     constructor() { this.draft = null; this.issues = []; this.questions = []; this.unsupported = []; this.busy = false; this.changed(); }
-    changed() {
+    changed(invalidateComposition = true) {
+      if (invalidateComposition && this.draft?.composition) {
+        this.draft.composition.riskConfirmed = false;
+        this.draft.composition.exitConfirmed = false;
+      }
       if (this.draft?.portfolio) this.draft.schemaVersion = 3;
       const extended = ['RANGE_BREAKOUT', 'MA_COMPARE', 'PRICE_MA', 'ATR_BREAKOUT'];
       const conditions = [...(this.draft?.entry?.conditions || []), ...(this.draft?.exit?.conditions || [])];
@@ -71,16 +75,19 @@
       this.promptDirty = false;
       this.validate(result);
     }
-    validate(result) { this.issues = result.issues || []; this.validated = result.ready === true; this.confirmed = false; }
+    validate(result) {
+      this.issues = result.issues || []; this.validated = result.ready === true; this.confirmed = false;
+      if (this.draft?.composition) { this.questions = result.questions || []; this.unsupported = result.unsupported || []; }
+    }
     canConfirm() { return !!this.draft && this.validated && !this.promptDirty && !this.issues.length && !this.questions.length && !this.unsupported.length; }
     canSave() { return this.canConfirm() && this.confirmed && !this.busy; }
   }
   class DraftCollection {
     constructor() { this.items = []; this.index = -1; }
     accept(result) {
-      this.items = result.items.map(item => {
+      this.items = [...result.items, ...(result.items.length > 1 && result.total ? [result.total] : [])].map((item, index) => {
         const state = new DraftState(); state.accept(structuredClone(item.draft));
-        return {title:item.title, prompt:item.prompt, clarifications:'', state, saved:null};
+        return {title:item.title, prompt:item.prompt, clarifications:'', state, saved:null, kind:index < result.items.length ? 'individual' : 'total', checked:false};
       });
       this.index = -1;
     }
@@ -91,7 +98,42 @@
     }
     get current() { return this.items[this.index] || null; }
   }
-  if (typeof module !== 'undefined' && module.exports) module.exports = { percentToRate, rateToPercent, splitSavedPrompt, DraftState, DraftCollection };
+  function compositionLeaves(composition) {
+    const leaves = new Map();
+    const visit = rule => {
+      if (!rule) return;
+      if (rule.condition) leaves.set(rule.id, rule);
+      else (rule.children || []).forEach(visit);
+    };
+    visit(composition?.entry); visit(composition?.exit);
+    return leaves;
+  }
+  // Derive presentation from the saved run only; never re-evaluate against current candles.
+  function executionCoverage(snapshot) {
+    const account = snapshot.result?.account || snapshot.result;
+    const dates = [...new Set((account?.equity || []).map(p => p.date))].sort();
+    const firstDate = dates[0] || null, lastDate = dates[dates.length - 1] || null;
+    const leaves = compositionLeaves(snapshot.strategy?.strategy?.composition), counts = new Map();
+    for (const evaluation of snapshot.result?.evaluations || []) {
+      for (const result of evaluation.nodes || []) {
+        const leaf = leaves.get(result.id);
+        if (!leaf) continue; // Group readiness can hide an unready OR branch; count leaves individually.
+        const key = JSON.stringify([evaluation.phase, evaluation.symbol, result.id]);
+        if (!counts.has(key)) counts.set(key, {id:result.id, sourceId:leaf.sourceId || result.sourceId || null,
+          symbol:evaluation.symbol, phase:evaluation.phase, evaluated:new Set(), missing:new Set()});
+        const count = counts.get(key); count.evaluated.add(evaluation.date);
+        if (result.ready === false) count.missing.add(evaluation.date);
+      }
+    }
+    const unready = [...counts.values()].filter(c => c.missing.size).map(c => {
+      const missing = [...c.missing].sort();
+      return {id:c.id,sourceId:c.sourceId,symbol:c.symbol,phase:c.phase,days:missing.length,evaluatedDays:c.evaluated.size,
+        firstDate:missing[0],lastDate:missing[missing.length - 1]};
+    });
+    return {firstDate,lastDate,days:dates.length,
+      rangeDiffers:!!dates.length && (firstDate !== snapshot.execution?.startDate || lastDate !== snapshot.execution?.endDate),unready};
+  }
+  if (typeof module !== 'undefined' && module.exports) module.exports = { percentToRate, rateToPercent, splitSavedPrompt, DraftState, DraftCollection, executionCoverage };
   if (typeof document === 'undefined') return;
   const root = document.getElementById('strategyWorkbench');
   if (!root) return;
@@ -171,7 +213,7 @@
     }
     rememberDraft(); drafts.accept(result);
     await selectDraft(0);
-    notify(`${result.items.length}개 초안을 만들었습니다. 각 전략을 선택해 조건을 확인하고 개별 저장하세요.`);
+    notify(`개별 ${result.items.length}개${result.total ? '와 전체 토탈' : ''} 초안을 만들었습니다. 선택한 초안의 조건을 확인하세요.`);
   }), 'sw-primary');
   write.append(interpret, button('연결 상태 다시 확인', () => operation('연결 확인 중…', checkStatus)));
   write.append(node('p', '개인 PC의 Codex ChatGPT 구독 로그인을 사용합니다. API 과금으로 전환하지 않습니다.', 'sw-muted'));
@@ -179,12 +221,24 @@
   const batchIssues = node('div', null, 'sw-issues'); batchIssues.setAttribute('aria-live', 'polite'); write.append(batchIssues);
   const edit = block('2. 조건을 확인하고 저장하세요');
   const draftList = node('div', null, 'sw-list'); edit.append(draftList);
+  const composeButton = button('선택한 전략 조합', () => operation('선택한 조건으로 조합을 만드는 중…', async () => {
+    rememberDraft();
+    const picked = drafts.items.filter(item => item.kind === 'individual' && item.checked);
+    if (picked.length < 2) throw new Error('개별 초안을 2개 이상 선택하세요.');
+    if (picked.some(item => item.state.promptDirty)) throw new Error('원문이 변경된 초안은 먼저 다시 해석해 주세요.');
+    const name = `사용자 조합 · ${picked.map(item => item.state.draft?.name || item.title).join(' + ')}`.slice(0, 200);
+    const result = await api('/api/strategy-assistant/compose', 'POST', {name, items:picked.map(item => ({title:item.title,prompt:item.prompt,draft:{strategy:structuredClone(item.state.draft),questions:item.state.questions,unsupported:item.state.unsupported,issues:item.state.issues,ready:item.state.validated}}))});
+    const composed = new DraftState(); composed.accept(result);
+    drafts.items.push({title:name,prompt:result.strategy.originalPrompt || picked.map(item=>item.prompt).join('\n'),clarifications:'',state:composed,saved:null,kind:'composition'});
+    await selectDraft(drafts.items.length - 1); notify('독립된 조합 초안을 만들었습니다. 결합 규칙·공통 위험·청산·배분을 확인하세요.');
+  })); edit.append(composeButton);
   const sourcePrompt = field(edit, '선택 전략 원문', '', value => { if (drafts.current) drafts.current.prompt = value; state.promptDirty = true; changed(); },
     {textarea:true, maxLength:6000, placeholder:'목록에서 선택한 전략의 원문입니다.'});
   const clarification = field(edit, '보완 입력 · 질문의 답이나 미지원 조건 수정', '', value => {
     if (drafts.current) drafts.current.clarifications = value; state.promptDirty = true; changed();
   }, {textarea:true, maxLength:6000, placeholder:'이 전략에 대한 답변만 입력하고 선택 전략을 다시 해석하세요.'});
   const reinterpret = button('선택 전략 다시 해석', () => operation('선택한 전략의 보완 내용을 해석하고 있습니다…', async () => {
+    if (state.draft?.composition) throw new Error('통합 초안은 아래 조건을 편집하거나 개별 초안을 다시 선택해 조합하세요.');
     state.changed(); sync();
     const result = await api('/api/strategy-assistant/interpret', 'POST', {prompt:sourcePrompt.value, clarifications:clarification.value || null});
     state.accept(result); rememberDraft(); renderEditor(); renderIssues();
@@ -192,31 +246,41 @@
   }));
   edit.append(reinterpret);
   const issues = node('div', null, 'sw-issues'); issues.setAttribute('aria-live', 'polite');
+  issues.setAttribute('role', 'region'); issues.setAttribute('aria-label', '조건 검증 결과'); issues.tabIndex = -1;
   const editor = node('div');
   const validate = button('입력 조건 검증', () => operation('조건 검증 중…', async () => {
-    state.changed(); sync();
+    state.changed(false); sync();
     state.validate(await api('/api/strategy-assistant/validate', 'POST', state.draft));
     renderIssues(); notify(state.canConfirm() ? '검증 완료. 조건과 원문을 확인하고 체크하세요.' : '보완 사항을 해결한 뒤 다시 확인해 주세요.');
+    issues.scrollIntoView({block:'center'}); issues.focus({preventScroll:true});
   }));
   const confirmLabel = node('label', null, 'sw-check');
   const confirm = node('input'); confirm.type = 'checkbox'; confirm.addEventListener('change', () => { state.confirmed = confirm.checked; sync(); });
   confirmLabel.append(confirm, node('span', '원문·조건·위험 관리 설정을 검토했으며 이 내용으로 저장합니다.'));
   const saveNew = button('새 전략으로 저장', () => save(false), 'sw-primary');
   const saveVersion = button('선택 전략의 새 버전 저장', () => save(true));
-  edit.append(issues, editor, validate, confirmLabel, saveNew, saveVersion);
-  function changed() { state.changed(); sync(); renderIssues(); }
+  edit.append(editor, issues, validate, confirmLabel, saveNew, saveVersion);
+  function changed(invalidateComposition = true) { state.changed(invalidateComposition); sync(); renderIssues(); }
   function sync() {
     state.busy = working;
     interpret.disabled = !assistantReady || !prompt.value.trim() || prompt.value.length > 6000 || state.busy;
-    reinterpret.disabled = !assistantReady || !sourcePrompt.value.trim() || sourcePrompt.value.length > 6000 || clarification.value.length > 6000 || state.busy;
+    const compositeDraft = !!state.draft?.composition;
+    reinterpret.disabled = compositeDraft || !assistantReady || !sourcePrompt.value.trim() || sourcePrompt.value.length > 6000 || clarification.value.length > 6000 || state.busy;
+    sourcePrompt.readOnly = compositeDraft; clarification.disabled = compositeDraft;
+    composeButton.disabled = state.busy || drafts.items.filter(item => item.kind === 'individual' && item.checked).length < 2;
+    editor.querySelectorAll('[data-composition-confirm]').forEach(input => { input.checked = state.draft?.composition?.[input.dataset.compositionConfirm] === true; });
+    editor.querySelectorAll('[data-tree-preview]').forEach(preview => { preview.textContent = ruleTreeText(state.draft.composition[preview.dataset.treePreview]); });
     validate.disabled = !state.draft || state.busy;
     confirm.checked = state.confirmed;
     confirm.disabled = !state.canConfirm() || state.busy;
     saveNew.disabled = !state.canSave(); saveVersion.disabled = !state.canSave() || !selected;
     runButton.disabled = !selected || state.busy;
-    const portfolioMode = !!selected?.strategy?.portfolio;
+    const compositeMode = !!selected?.strategy?.composition;
+    const portfolioMode = !!selected?.strategy?.portfolio || compositeMode;
     portfolioFields.hidden = !portfolioMode;
-    symbol.closest('label').hidden = portfolioMode;
+    symbol.closest('label').hidden = portfolioMode && !compositeMode;
+    const needsUniverse = !!selected?.strategy?.portfolio || !!selected?.strategy?.composition?.selection;
+    universe.closest('label').hidden = !needsUniverse; universeFile.closest('label').hidden = !needsUniverse;
     resultCaution.hidden = portfolioMode;
     renderDrafts();
   }
@@ -230,7 +294,13 @@
         : !item.state.validated ? '검증 필요' : '검토 가능';
       const choice = button(`초안 ${index + 1} · ${item.state.draft?.name || item.title} · ${label}${item.saved ? ' · 저장됨' : ''}`,
         () => operation('초안 선택 중…', () => selectDraft(index)));
-      choice.setAttribute('aria-pressed', String(index === drafts.index)); draftList.append(choice);
+      choice.setAttribute('aria-pressed', String(index === drafts.index));
+      const row = node('div',null,'sw-list-row');
+      if (item.kind === 'individual') {
+        const check = node('input'); check.type = 'checkbox'; check.checked = !!item.checked; check.setAttribute('aria-label',`조합 선택 · ${item.title}`);
+        check.addEventListener('change',()=>{item.checked=check.checked;sync();}); row.append(check);
+      }
+      row.append(choice); draftList.append(row);
     });
   }
   function clearSelection() {
@@ -275,6 +345,35 @@
       obj[key] = choices ? value || null : percent ? percentToRate(value) : number(value); changed();
     }, choices ? { choices } : { type: 'number' });
   }
+  function conditionFields(row, condition) {
+    if (condition?.type === 'MA_CROSS' || condition?.type === 'MA_COMPARE') {
+      editField(row, '이동평균 종류', condition, 'averageType', averages);
+      editField(row, '단기 기간 (봉)', condition, 'shortPeriod'); editField(row, '장기 기간 (봉)', condition, 'longPeriod');
+      if (condition.type === 'MA_CROSS') editField(row, '교차 방향', condition, 'direction', [['UP','상향 교차'],['DOWN','하향 교차']]);
+      else editField(row, '비교 방식', condition, 'comparison', extendedComparisons);
+    } else if (condition?.type === 'RSI') {
+      editField(row, 'RSI 계산 방식', condition, 'method', [['SIMPLE','단순 평균 (SIMPLE)']]);
+      editField(row, '기간 (봉)', condition, 'period'); editField(row, 'RSI 기준 (0~100)', condition, 'threshold');
+      editField(row, '비교 방식', condition, 'comparison', comparisons);
+    } else if (condition?.type === 'VOLUME') {
+      editField(row, '평균 거래량 기간 (봉)', condition, 'period'); editField(row, '거래량 배수', condition, 'multiplier');
+      editField(row, '비교 방식', condition, 'comparison', comparisons.slice(0,2));
+    } else if (condition?.type === 'RANGE_BREAKOUT') {
+      editField(row, '돌파 구간 길이', condition, 'period');
+      editField(row, '돌파 구간 단위', condition, 'periodUnit', [['BARS','거래봉'],['CALENDAR_WEEKS','달력상 주']]);
+      editField(row, '구간 가격 기준', condition, 'priceField', [['HIGH','최고 고가'],['LOW','최저 저가']]);
+      editField(row, '비교 방식', condition, 'comparison', extendedComparisons);
+      row.append(node('p','종가를 당일 제외 과거 구간과 비교합니다. 52주: 길이 52 / 달력상 주 / 최고 고가.','sw-muted'));
+    } else if (condition?.type === 'PRICE_MA') {
+      editField(row, '이동평균 종류', condition, 'averageType', averages);
+      editField(row, '이동평균 기간 (봉)', condition, 'period'); editField(row, '비교 방식', condition, 'comparison', extendedComparisons);
+    } else if (condition?.type === 'ATR_BREAKOUT') {
+      editField(row, 'ATR 돌파 계산 방식', condition, 'method', atrMethods);
+      editField(row, 'ATR 돌파 기간 (봉)', condition, 'period'); editField(row, 'ATR 돌파 배수', condition, 'multiplier');
+      editField(row, '비교 방식', condition, 'comparison', extendedComparisons);
+      row.append(node('p','종가와 전일 종가 + 배수 × 전일 ATR을 비교합니다.','sw-muted'));
+    }
+  }
   function renderGroup(key, title) {
     const section = node('div', null, 'sw-rule-group'); section.append(node('h4', title)); editor.append(section);
     const group = state.draft[key];
@@ -287,37 +386,7 @@
       field(row, `조건 ${index + 1} 종류`, condition?.type, value => {
         group.conditions[index] = value ? { type: value } : null; changed(); renderEditor();
       }, { choices: types });
-      if (condition?.type === 'MA_CROSS') {
-        editField(row, '이동평균 종류', condition, 'averageType', [['SMA', '단순 이동평균 (SMA)'], ['EMA', '지수 이동평균 (EMA)']]);
-        editField(row, '단기 기간 (봉)', condition, 'shortPeriod'); editField(row, '장기 기간 (봉)', condition, 'longPeriod');
-        editField(row, '교차 방향', condition, 'direction', [['UP', '상향 교차'], ['DOWN', '하향 교차']]);
-      } else if (condition?.type === 'RSI') {
-        editField(row, 'RSI 계산 방식', condition, 'method', [['SIMPLE', '단순 평균 (SIMPLE)']]);
-        editField(row, '기간 (봉)', condition, 'period'); editField(row, 'RSI 기준 (0~100)', condition, 'threshold');
-        editField(row, '비교 방식', condition, 'comparison', comparisons);
-      } else if (condition?.type === 'VOLUME') {
-        editField(row, '평균 거래량 기간 (봉)', condition, 'period'); editField(row, '거래량 배수', condition, 'multiplier');
-        editField(row, '비교 방식', condition, 'comparison', comparisons.slice(0, 2));
-      } else if (condition?.type === 'RANGE_BREAKOUT') {
-        editField(row, '돌파 구간 길이', condition, 'period');
-        editField(row, '돌파 구간 단위', condition, 'periodUnit', [['BARS', '거래봉'], ['CALENDAR_WEEKS', '달력상 주']]);
-        editField(row, '구간 가격 기준', condition, 'priceField', [['HIGH', '최고 고가'], ['LOW', '최저 저가']]);
-        editField(row, '비교 방식', condition, 'comparison', extendedComparisons);
-        row.append(node('p', '종가를 당일 제외 과거 구간과 비교합니다. 52주: 길이 52 / 달력상 주 / 최고 고가.', 'sw-muted'));
-      } else if (condition?.type === 'MA_COMPARE') {
-        editField(row, '이동평균 종류', condition, 'averageType', averages);
-        editField(row, '단기 기간 (봉)', condition, 'shortPeriod'); editField(row, '장기 기간 (봉)', condition, 'longPeriod');
-        editField(row, '비교 방식', condition, 'comparison', extendedComparisons);
-      } else if (condition?.type === 'PRICE_MA') {
-        editField(row, '이동평균 종류', condition, 'averageType', averages);
-        editField(row, '이동평균 기간 (봉)', condition, 'period');
-        editField(row, '비교 방식', condition, 'comparison', extendedComparisons);
-      } else if (condition?.type === 'ATR_BREAKOUT') {
-        editField(row, 'ATR 돌파 계산 방식', condition, 'method', atrMethods);
-        editField(row, 'ATR 돌파 기간 (봉)', condition, 'period'); editField(row, 'ATR 돌파 배수', condition, 'multiplier');
-        editField(row, '비교 방식', condition, 'comparison', extendedComparisons);
-        row.append(node('p', '종가와 전일 종가 + 배수 × 전일 ATR을 비교합니다.', 'sw-muted'));
-      }
+      conditionFields(row, condition);
       row.append(button(`조건 ${index + 1} 삭제`, () => { group.conditions.splice(index, 1); changed(); renderEditor(); }));
     });
     const add = button('조건 추가', () => { if (!group.conditions) group.conditions = []; group.conditions.push(null); changed(); renderEditor(); });
@@ -329,9 +398,14 @@
     if (!state.draft) { editor.append(node('p', '전략을 해석하거나 저장된 전략을 선택하면 편집할 수 있습니다.', 'sw-muted')); return; }
     const draft = state.draft;
     field(editor, '전략 이름', draft.name, value => { draft.name = value; changed(); }, { maxLength: 200 });
+    if (draft.composition) { renderCompositionEditor(draft); return; }
     if (draft.portfolio) { renderPortfolioEditor(draft); return; }
     editor.append(node('p', '빈칸은 미입력 값으로 유지합니다. 조건을 추가한 뒤 종류와 필수 항목을 직접 선택하세요. 모든 신호·손절은 종가 확인 기준입니다.', 'sw-muted'));
     renderGroup('entry', '진입 조건'); renderGroup('exit', '청산 조건');
+    renderRiskEditor(draft);
+    const original = node('details'); original.append(node('summary', '저장될 원문 확인'), node('pre', draft.originalPrompt || '(원문 없음)', 'sw-prose')); editor.append(original);
+  }
+  function renderRiskEditor(draft) {
     const risk = node('div', null, 'sw-rule-group'); risk.append(node('h4', '위험 관리')); editor.append(risk);
     const risks = [['stopLoss', '손절 사용', 'rate', '손절 수익률 (%) · 음수, 예: -5', true],
       ['takeProfit', '익절 사용', 'rate', '익절 수익률 (%) · 양수, 예: 10', true],
@@ -343,7 +417,7 @@
       if (draft.risk?.[key]) editField(line, label, draft.risk[key], prop, null, percent);
       risk.append(line);
     });
-    field(risk, '트레일링 정책 · 명시적으로 선택할 때만 적용', draft.risk?.trailing, value => {
+    if (!draft.composition) field(risk, '트레일링 정책 · 명시적으로 선택할 때만 적용', draft.risk?.trailing, value => {
       if (!draft.risk) draft.risk = {}; draft.risk.trailing = value || null; changed();
     }, { choices: [['LEGACY_STEP_3_PERCENT', '기존 3% 단계 트레일링 (LEGACY_STEP_3_PERCENT)']], emptyLabel: '사용 안 함' });
     for (const [key, title] of [['trailingStop', '비율 추적손절 사용'], ['atrStop', 'ATR 손절 사용']]) {
@@ -368,7 +442,111 @@
       }
       risk.append(line);
     }
-    const original = node('details'); original.append(node('summary', '저장될 원문 확인'), node('pre', draft.originalPrompt || '(원문 없음)', 'sw-prose')); editor.append(original);
+  }
+  function ruleTreeText(rule) {
+    if (!rule) return '없음';
+    if (rule.condition) return `${ruleSummary(rule.condition)} [${rule.sourceId || '출처 미선택'} / ${rule.id}]`;
+    return '(' + (rule.children || []).map(ruleTreeText).join(` ${rule.operator || '결합 미정'} `) + ')';
+  }
+  function newRuleId() { return 'user-' + Date.now().toString(36) + '-' + (++fieldId); }
+  function removeSourceNode(rule, sourceId) {
+    if (!rule || rule.sourceId === sourceId) return null;
+    if (rule.children) rule.children = rule.children.map(child=>removeSourceNode(child,sourceId)).filter(Boolean);
+    return rule;
+  }
+  function renderTree(parent, key, title) {
+    const composition = state.draft.composition;
+    const section = node('div',null,'sw-rule-group'); section.append(node('h4',title)); parent.append(section);
+    const preview = node('p',ruleTreeText(composition[key]),'sw-caution'); preview.dataset.treePreview = key; section.append(preview);
+    if (!composition[key]) {
+      section.append(button(`${title} 그룹 추가`,()=>{composition[key]={id:newRuleId(),operator:null,children:[]};changed();renderEditor();})); return;
+    }
+    const walk = (container, rule, depth, remove) => {
+      const box = node('div',null,'sw-rule-group sw-nested-rule');container.append(box);
+      box.append(node('p',`조건 ID: ${rule.id} · 출처: ${rule.sourceId || '공통 그룹'}`,'sw-muted'));
+      if (rule.condition != null || !rule.children) {
+        field(box,`${title} 조건 종류 · ${rule.id}`,rule.condition?.type,value=>{rule.condition=value?{type:value}:{};changed();renderEditor();},{choices:types});
+        field(box,`원문 출처 · ${rule.id}`,rule.sourceId,value=>{rule.sourceId=value||null;changed();},{choices:composition.sources.filter(s=>s.included).map(s=>[s.id,s.title])});
+        const fields = node('div',null,'sw-condition');box.append(fields);conditionFields(fields,rule.condition);
+      } else {
+        if (rule.children.length > 1) editField(box,`${title} 결합 · ${rule.id}`,rule,'operator',operators);
+        else box.append(node('p',rule.children.length === 1 ? '조건 1개 · 결합 방식 선택이 필요 없습니다.' : '조건을 추가해 주세요.','sw-muted'));
+        const picked = new Set();
+        rule.children.forEach(child=>{
+          const wrap=node('div');box.append(wrap);
+          const check=node('input');check.type='checkbox';check.setAttribute('aria-label',`묶기 선택 · ${child.id}`);check.addEventListener('change',()=>{check.checked?picked.add(child):picked.delete(child);});
+          const label=node('label',null,'sw-check');label.append(check,node('span',`하위 그룹으로 묶기 · ${child.id}`));wrap.append(label);
+          walk(wrap,child,depth+1,()=>{rule.children=rule.children.filter(x=>x!==child);});
+        });
+        box.append(button(`말단 조건 추가 · ${rule.id}`,()=>{rule.children.push({id:newRuleId(),sourceId:rule.sourceId||null,condition:{}});changed();renderEditor();}));
+        const addGroup = button(`하위 그룹 추가 · ${rule.id}`,()=>{rule.children.push({id:newRuleId(),operator:null,children:[]});changed();renderEditor();});addGroup.disabled=depth>=3;box.append(addGroup);
+        const groupPicked=button(`선택 조건 하위 그룹으로 묶기 · ${rule.id}`,()=>{
+          if(picked.size<2){notify('같은 그룹 안의 조건을 2개 이상 선택하세요.',true);return;}
+          const children=rule.children.filter(x=>picked.has(x)),first=rule.children.indexOf(children[0]);
+          rule.children=rule.children.filter(x=>!picked.has(x));rule.children.splice(first,0,{id:newRuleId(),operator:null,children});changed();renderEditor();
+        });groupPicked.disabled=depth>=3;box.append(groupPicked);
+      }
+      box.append(button(`조건 제거 · ${rule.id}`,()=>{remove();changed();renderEditor();}));
+    };
+    walk(section,composition[key],1,()=>{composition[key]=null;});
+  }
+  function compositionConfirmation(parent, composition, key, title) {
+    const label=node('label',null,'sw-check'),input=node('input');input.type='checkbox';input.checked=composition[key]===true;input.dataset.compositionConfirm=key;
+    input.addEventListener('change',()=>{composition[key]=input.checked;changed(false);});label.append(input,node('span',title));parent.append(label);
+  }
+  function renderSelectionFields(parent,p) {
+    editField(parent,'대상 시장',p,'market',[['KOSPI','KOSPI'],['KOSDAQ','KOSDAQ'],['KOSPI_KOSDAQ','KOSPI + KOSDAQ']]);
+    editField(parent,'수익률 기간 (개월)',p,'lookbackMonths');editField(parent,'상위 종목 수',p,'topN');editField(parent,'SMA 필터 기간 (거래일)',p,'smaPeriod');
+    editField(parent,'순위와 필터 적용 순서',p,'selectionOrder',[['FILTER_THEN_RANK','SMA 필터 통과 종목에서 상위 선정'],['RANK_THEN_FILTER','전체 상위 선정 후 SMA 필터 적용']]);
+    editField(parent,'주간 순위 계산일',p,'rebalanceTiming',[['WEEK_START','주 첫 거래일 종가'],['WEEK_END','주 마지막 거래일 종가']]);
+    editField(parent,'종목 비중',p,'weighting',[['EQUAL_SLOTS','동일 비중 1/N · 부족한 후보 몫은 현금']]);
+  }
+  function renderCompositionEditor(draft) {
+    const c=draft.composition;
+    editor.append(node('p','통합 전략 · 개별 원문을 복사한 독립 초안입니다. 원본 수정은 자동 반영되지 않습니다. 다시 조합하려면 위에서 개별 전략을 선택하세요. 조건 수정 시 공통 위험·청산 확인이 해제됩니다.','sw-caution'));
+    const provenance=node('div',null,'sw-rule-group');provenance.append(node('h4','원문에서 달라진 내용'));editor.append(provenance);
+    (c.sources||[]).forEach(s=>{
+      const box=node('div',null,'sw-rule-group');provenance.append(box);
+      const toggle=node('input');toggle.type='checkbox';toggle.checked=s.included===true;
+      const label=node('label',null,'sw-check');label.append(toggle,node('span',`원문 포함 · ${s.title}`));box.append(label);
+      toggle.addEventListener('change',()=>{
+        s.included=toggle.checked;
+        s.resolution=null;
+        if(!s.included){c.entry=removeSourceNode(c.entry,s.id);c.exit=removeSourceNode(c.exit,s.id);if(c.selectionSourceId===s.id){c.selection=null;c.selectionSourceId=null;c.rankExit=null;}}
+        changed();renderEditor();
+      });
+      box.append(node('p',`${s.id} · ${s.included?'사용 / 편집된 조건은 아래에서 확인':'제외'} · 공통 위험·청산으로 적용 범위가 바뀝니다. 제외·수정·질문 해결 사유를 기록하세요. 다시 포함할 경우 조건을 추가하거나 원본에서 재조합하세요.`,'sw-muted'));
+      field(box,`변경·제외·질문 해결 사유 · ${s.title}`,s.resolution,value=>{s.resolution=value.trim()||null;changed();},{textarea:true,maxLength:4000});
+      const outstanding=[...(s.questions||[]),...(s.unsupported||[])];if(outstanding.length)box.append(node('p','원문 보완 사항: '+outstanding.join(' / '),'sw-issues'));
+      details(box,`생성 당시 원문·조건 (읽기 전용) · ${s.title}`,{prompt:s.prompt,definition:s.definition});
+      const originalRisk=s.definition?.risk;
+      const riskParts=[originalRisk?.stopLoss && `손절 ${pct(originalRisk.stopLoss.rate)}`, originalRisk?.takeProfit && `익절 ${pct(originalRisk.takeProfit.rate)}`,
+        originalRisk?.trailingStop && `고점 대비 ${pct(originalRisk.trailingStop.rate)} (${({HIGH:'일중 고가',CLOSE:'최고 종가'})[originalRisk.trailingStop.peakBasis] || '고점 기준 미선택'})`,
+        originalRisk?.atrStop && `ATR(${originalRisk.atrStop.period ?? '?'}) × ${originalRisk.atrStop.multiplier ?? '?'} 손절`,
+        originalRisk?.timeExit && `${originalRisk.timeExit.days}봉 초과 청산`,originalRisk?.trailing && '기존 단계식 트레일링'];
+      box.append(node('p',`원문 위험 관리 후보: ${riskParts.filter(Boolean).join(' · ') || '없음'}`,'sw-muted'));
+      if(s.included&&s.definition?.risk)box.append(button(`공통 위험 후보 가져오기 · ${s.title}`,()=>{draft.risk=structuredClone(s.definition.risk);changed();renderEditor();}));
+    });
+    const selection=node('div',null,'sw-rule-group');selection.append(node('h4','실행 대상과 종목 선정'));editor.append(selection);
+    field(selection,'상대강도 선정 원문',c.selectionSourceId,value=>{
+      const source=c.sources.find(s=>s.id===value);c.selectionSourceId=value||null;c.selection=source?structuredClone(source.definition.portfolio):null;c.rankExit=null;changed();renderEditor();
+    },{choices:c.sources.filter(s=>s.included&&s.definition?.portfolio).map(s=>[s.id,s.title]),emptyLabel:'상대강도 선정 사용 안 함 · 특정 종목'});
+    if(c.selection){
+      renderSelectionFields(selection,c.selection);
+      field(selection,'주간 순위 이탈 청산',c.rankExit==null?'':String(c.rankExit),value=>{c.rankExit=value===''?null:value==='true';changed();},{choices:[['true','순위 이탈 시 청산'],['false','순위 이탈만으로 청산하지 않음']]});
+      selection.append(node('p','전체 비교 시장 자료가 필요합니다. 종목 코드를 지정하면 해당 종목만 거래하며, 비워 두면 선정 종목 전체를 평가합니다.','sw-muted'));
+    }else selection.append(node('p','실행 시 종목 코드를 지정합니다. 상대강도 비교 시장 자료는 요구하지 않습니다.','sw-muted'));
+    renderTree(editor,'entry','진입');renderTree(editor,'exit','청산');
+    compositionConfirmation(editor,c,'exitConfirmed','공통 청산 적용 범위를 확인했습니다.');
+    renderRiskEditor(draft);
+    editor.append(node('p','공통 위험 기준: 고정 손절은 현재 평균 매입가, 추적 고점은 최초 진입부터 유지, ATR 손절은 최초 진입가격과 진입 직전 완성 봉 ATR로 고정합니다. 부분 조정은 고점·ATR을 초기화하지 않습니다. 고정·ATR 손절을 함께 켜면 어느 하나라도 충족할 때 청산합니다. 위험 규칙을 모두 끄는 경우도 아래 확인이 필요합니다.','sw-caution'));
+    compositionConfirmation(editor,c,'riskConfirmed','공통 위험 관리 적용과 기준을 확인했습니다.');
+    const allocation=node('div',null,'sw-rule-group');allocation.append(node('h4','자금 배분'));editor.append(allocation);
+    if(!c.allocation)c.allocation={maxPositions:null,rebalance:null};
+    editField(allocation,'최대 보유 종목 수',c.allocation,'maxPositions');
+    editField(allocation,'비중 조정 방식',c.allocation,'rebalance',[['ENTRY_ONLY','신규 진입 때만 배분'],...(c.selection?[['WEEKLY_EQUAL','주간 동일 비중 재조정']]:[])]);
+    allocation.append(node('p','최대 보유 수 기준 동일 비중을 사용하고, 신호가 부족한 몫은 현금으로 유지합니다. 여러 신호가 참이어도 같은 종목은 한 번만 진입합니다.','sw-muted'));
+    details(editor,'저장될 통합 원문 확인',draft.originalPrompt);
   }
   function renderPortfolioEditor(draft) {
     const p = draft.portfolio;
@@ -477,17 +655,21 @@
   portfolioFields.append(node('p','tradingDates는 준비 이력부터 종료일 7일 이후까지의 거래일을 오름차순으로 포함해야 합니다. members의 from/to는 해당 시장 편입 시작/종료일이며 to=null은 종료 미정입니다.','sw-muted'));
   const runButton = button('선택 버전 백테스트 실행', () => operation('저장된 버전으로 백테스트 실행 중…', async () => {
     if (!selected) throw new Error('저장된 전략을 선택하세요.');
-    const isPortfolio=!!selected.strategy.portfolio;
-    if ((!isPortfolio && !/^[A-Za-z0-9]{1,32}$/.test(symbol.value.trim())) || !start.value || !end.value || !mode.value)
+    const isComposite=!!selected.strategy.composition;
+    const isPortfolio=!!selected.strategy.portfolio || isComposite;
+    const needsUniverse=!!selected.strategy.portfolio || !!selected.strategy.composition?.selection;
+    const symbolRequired=!selected.strategy.portfolio && !selected.strategy.composition?.selection;
+    if (((symbolRequired || (isComposite && symbol.value.trim())) && !/^[A-Za-z0-9]{1,32}$/.test(symbol.value.trim())) || !start.value || !end.value || !mode.value)
       throw new Error('종목 코드(영문·숫자), 시작일, 종료일, 체결 방식을 모두 입력하세요.');
     if (start.value > end.value) throw new Error('종료일은 시작일보다 빠를 수 없습니다.');
     const body={version:selected.version,startDate:start.value,endDate:end.value,executionMode:mode.value};
     if(isPortfolio){
       if(!capital.value||[commission,tax,slippage].some(x=>x.value.trim()===''))throw new Error('초기자금과 비용률을 모두 입력하세요.');
       Object.assign(body,{initialCapital:Number(capital.value),commissionRate:percentToRate(commission.value),taxRate:percentToRate(tax.value),slippageRate:percentToRate(slippage.value)});
-      try{body.universe=JSON.parse(universe.value);}catch{throw new Error('시장·거래일 자료를 올바른 JSON으로 입력하세요.');}
+      if(needsUniverse)try{body.universe=JSON.parse(universe.value);}catch{throw new Error('시장·거래일 자료를 올바른 JSON으로 입력하세요.');}
     }else body.symbol=symbol.value.trim();
-    const result = await api(`/api/strategies/${selected.id}/${isPortfolio?'portfolio-backtests':'backtests'}`, 'POST', body);
+    if(isComposite&&symbol.value.trim())body.symbol=symbol.value.trim();
+    const result = await api(`/api/strategies/${selected.id}/${isComposite?'composite-backtests':isPortfolio?'portfolio-backtests':'backtests'}`, 'POST', body);
     renderResult(result); await loadRuns(false); notify(`실행 #${result.id} 결과가 저장되었습니다. 상태: ${statusLabel(result.status)}`);
   }), 'sw-primary');
   run.append(runTarget, runFields, portfolioFields, node('p', '저장한 조건과 로컬 일봉 데이터로 계산하며 AI 토큰을 사용하지 않습니다. 필요한 이력 데이터가 없으면 거래가 없거나 실행이 제한될 수 있습니다.', 'sw-muted'), runButton);
@@ -500,9 +682,9 @@
   async function loadRuns(more) {
     if (!selected) return;
     const page = more ? runPage + 1 : 0;
-    const portfolio=!!selected.strategy.portfolio;
-    const historyRoot=portfolio?'/api/portfolio/runs':'/api/backtest/runs';
-    const entries = await api(`/api/strategies/${selected.id}/${portfolio?'portfolio-backtests':'backtests'}?page=${page}&size=20`);
+    const portfolio=!!selected.strategy.portfolio,composite=!!selected.strategy.composition;
+    const historyRoot=composite?'/api/composite/runs':portfolio?'/api/portfolio/runs':'/api/backtest/runs';
+    const entries = await api(`/api/strategies/${selected.id}/${composite?'composite-backtests':portfolio?'portfolio-backtests':'backtests'}?page=${page}&size=20`);
     if (!more) runList.replaceChildren();
     if (!entries.length && !more) runList.append(node('p', '실행 이력이 없습니다.', 'sw-muted'));
     entries.forEach(item => {
@@ -528,7 +710,11 @@
   function pct(value) { return value == null ? '—' : `${Number(rateToPercent(value)).toLocaleString('ko-KR', { maximumFractionDigits: 4 })}%`; }
   function statusLabel(value) { return ({ COMPLETED: '완료', NO_DATA: '데이터 없음', INSUFFICIENT_DATA: '준비 데이터 부족', NO_TRADES: '거래 없음', FAILED: '실패' })[value] || value || '상태 없음'; }
   function reasonLabel(value) {
-    return ({ ENTRY_CONDITIONS: '진입 조건 충족', EXIT_CONDITIONS: '청산 조건 충족', STOP_LOSS: '손절', ATR_STOP_LOSS: 'ATR 손절', TAKE_PROFIT: '익절', TIME_EXIT: '보유 봉 수 초과', TRAILING_STOP: '트레일링 청산', NO_NEXT_BAR: '다음 봉 없음', BUY: '매수', SELL: '매도' })[value] || value || '—';
+    return ({ ENTRY_CONDITIONS: '진입 조건 충족', EXIT_CONDITIONS: '청산 조건 충족', STOP_LOSS: '손절', ATR_STOP_LOSS: 'ATR 손절', TAKE_PROFIT: '익절', TIME_EXIT: '보유 봉 수 초과', TRAILING_STOP: '트레일링 청산', NO_NEXT_BAR: '다음 봉 없음', BUY: '매수', SELL: '매도',
+      CONDITIONS_NOT_MET:'조건 미충족', INSUFFICIENT_HISTORY:'준비 이력 부족', INSUFFICIENT_ATR_HISTORY:'진입 직전 ATR 이력 부족',
+      SAME_DAY_EXIT:'당일 청산 우선 · 재진입 제외', ALREADY_HELD:'이미 보유 중', ZERO_VOLUME:'거래량 없음',
+      NO_SIGNAL_BAR:'신호 판단 일봉 없음', NO_EXECUTION_BAR:'체결 일봉 없음', NOT_SELECTED:'주간 후보 미선정',
+      POSITION_LIMIT:'최대 보유 수 도달', INSUFFICIENT_CASH:'배정 자금·현금 부족', RANK_EXIT:'순위 이탈', RANK_RETAINED:'순위 유지', REBALANCE:'비중 조정' })[value] || value || '—';
   }
   function ruleSummary(condition) {
     if (!condition) return '미입력 조건';
@@ -559,18 +745,33 @@
   function pairs(parent, entries) {
     const dl = node('dl', null, 'sw-metrics'); entries.forEach(([label, value]) => { const div = node('div'); div.append(node('dt', label), node('dd', value == null ? '—' : String(value))); dl.append(div); }); parent.append(dl);
   }
-  function details(parent, title, value) { const el = node('details'); el.append(node('summary', title), node('pre', JSON.stringify(value, null, 2), 'sw-prose')); parent.append(el); }
+  function details(parent, title, value) { const el = node('details'); el.append(node('summary', title), node('pre', typeof value === 'string' ? value : JSON.stringify(value, null, 2), 'sw-prose')); parent.append(el); }
   function portfolioTable(title, headers, rows) {
     const scroller=node('div',null,'sw-table-scroll'),table=node('table');table.append(node('caption',title));
     const head=node('thead'),tr=node('tr');headers.forEach(x=>{const th=node('th',x);th.scope='col';tr.append(th);});head.append(tr);table.append(head);
     const body=node('tbody');rows.forEach(values=>{const row=node('tr');values.forEach(x=>row.append(node('td',x)));body.append(row);});table.append(body);scroller.append(table);resultArea.append(scroller);
   }
   function renderPortfolioResult(item) {
-    displayedRunId=item.id;resultArea.replaceChildren();const s=item.snapshot,r=s.result;
-    resultArea.append(node('h4',`포트폴리오 실행 #${item.id} · ${statusLabel(item.status)}`));
-    pairs(resultArea,[['전략 / 버전',`${s.strategy.strategy.name} / v${s.strategy.version}`],['자료 출처',s.execution.universe.source],['기간',`${s.execution.startDate} ~ ${s.execution.endDate}`]]);
+    displayedRunId=item.id;resultArea.replaceChildren();const s=item.snapshot,composite=!!s.strategy.strategy.composition,r=composite?s.result?.account:s.result;
+    const coverage=executionCoverage(s),needsReview=coverage.rangeDiffers || coverage.unready.length > 0;
+    resultArea.append(node('h4',`${composite?'통합 전략':'포트폴리오'} 실행 #${item.id} · ${statusLabel(item.status)}${needsReview?' · 데이터 범위·이력 확인 필요':''}`));
+    pairs(resultArea,[['전략 / 버전',`${s.strategy.strategy.name} / v${s.strategy.version}`],['자료 출처',s.execution.universe?.source || s.data?.source || '저장된 종목 일봉'],['거래 대상',s.execution.symbol || '선정 종목'],['요청 기간',`${s.execution.startDate} ~ ${s.execution.endDate}`]]);
     if(s.error)resultArea.append(node('p',`${s.error.code}: ${s.error.message}`,'sw-error'));
     if(r){
+      const info=node('section',null,needsReview?'sw-caution':'sw-muted');info.setAttribute('aria-label','실행 데이터 확인');
+      info.append(node('h5','실행 데이터 확인'));
+      pairs(info,[['실제 계산 기간',coverage.days?`${coverage.firstDate} ~ ${coverage.lastDate}`:'없음'],['계산 거래일 수',`${coverage.days}거래일`]]);
+      if(coverage.rangeDiffers)info.append(node('p','요청 기간과 실제 계산 기간이 다릅니다. 휴장일 또는 저장 데이터 누락 여부를 확인하세요. 표시된 수익률은 실제 계산 구간의 결과이며, 요청 기간 전체의 성과로 해석하지 마세요.'));
+      if(coverage.unready.length){
+        info.append(node('p','준비 이력이 부족해 평가하지 못한 조건이 있습니다. OR는 준비된 다른 조건으로 거래할 수 있으므로, 실행 완료가 모든 조건의 평가 완료를 뜻하지 않습니다.'));
+        const leaves=compositionLeaves(s.strategy.strategy.composition),sources=s.strategy.strategy.composition?.sources || [],list=node('ul');
+        coverage.unready.forEach(c=>{
+          const source=sources.find(source=>source.id===c.sourceId),rule=leaves.get(c.id);
+          list.append(node('li',`${c.phase==='ENTRY'?'진입':'청산'} · ${c.symbol} · ${source?.title || c.sourceId || '공통'} · ${ruleSummary(rule.condition)}: 준비 이력 부족 ${c.days}/${c.evaluatedDays}판정일 (${c.firstDate} ~ ${c.lastDate})`));
+        });info.append(list);
+      }
+      info.append(node('p','저장된 실행 스냅샷 기준입니다. 계산 거래일 수는 전체 시장 거래일의 누락이 없음을 보장하지 않습니다.'));
+      resultArea.append(info);
       const money=v=>Number(v).toLocaleString('ko-KR',{maximumFractionDigits:2});
       pairs(resultArea,[['초기자금 (원)',money(r.initialCapital)],['최종 평가액 (원)',money(r.finalEquity)],['계좌 수익률',pct(r.totalReturn)],['일별 계좌 최대 낙폭',pct(r.maxDrawdown)],['현금 (원)',money(r.cash)]]);
       if(r.equity?.length){
@@ -579,7 +780,7 @@
         const line=document.createElementNS(svg.namespaceURI,'polyline');line.setAttribute('points',values.map((v,i)=>`${20+i*660/Math.max(1,values.length-1)},${180-(v-min)*160/range}`).join(' '));line.setAttribute('fill','none');line.setAttribute('stroke','#88d2ac');line.setAttribute('stroke-width','3');svg.append(line);resultArea.append(node('h4','일별 계좌 평가액'),svg);
         details(resultArea,'일별 평가액·현금 원자료',r.equity);
       }
-      portfolioTable('포트폴리오 거래 내역',['체결일','신호일','종목','구분','수량','가격','수수료','세금','사유'],(r.trades||[]).map(t=>[t.date,t.signalDate,t.symbol,t.side==='BUY'?'매수':'매도',t.quantity,money(t.price),money(t.fee),money(t.tax),t.reason==='STOP_LOSS'?'손절':t.reason==='RANK_EXIT'?'순위 이탈':'비중 조정']));
+      portfolioTable('포트폴리오 거래 내역',['체결일','신호일','종목','구분','수량','가격','수수료','세금','사유'],(r.trades||[]).map(t=>[t.date,t.signalDate,t.symbol,t.side==='BUY'?'매수':'매도',t.quantity,money(t.price),money(t.fee),money(t.tax),({STOP_LOSS:'손절',RANK_EXIT:'순위 이탈',REBALANCE:'비중 조정'})[t.reason] || reasonLabel(t.reason)]));
       resultArea.append(node('h4','종목 선정 근거'));
       (r.selections||[]).forEach(selection=>{
         const section=node('details');section.append(node('summary',`${selection.date} · 순위 ${selection.ranked.length}종목 / 제외 ${selection.excluded.length}종목`));
@@ -590,10 +791,31 @@
       if(r.pending?.length)details(resultArea,'종료일 미체결 목표·주문',r.pending);
       const assumptions=node('ul');(r.assumptions||[]).forEach(x=>assumptions.append(node('li',x)));resultArea.append(node('h4','계산 기준과 데이터 범위'),assumptions);
     }
+    if(composite){
+      resultArea.append(node('h4','조건별 판정 근거'));
+      const evaluations=s.result?.evaluations||[];
+      if(!evaluations.length)resultArea.append(node('p','저장된 조건 판정이 없습니다.','sw-muted'));
+      const dates=[...new Set(evaluations.map(e=>e.date))],symbols=[...new Set(evaluations.map(e=>e.symbol))];
+      const filters=node('div',null,'sw-condition'),evidenceArea=node('div');resultArea.append(filters,evidenceArea);
+      let selectedDate=dates[0] || '',selectedSymbol=symbols[0] || '';
+      const draw=()=>{
+        evidenceArea.replaceChildren();
+        evaluations.filter(e=>(!selectedDate||e.date===selectedDate)&&(!selectedSymbol||e.symbol===selectedSymbol)).forEach(e=>{
+          const panel=node('details');panel.append(node('summary',`${e.date} · ${e.symbol} · ${({ENTRY:'진입',EXIT:'청산',RISK:'위험 관리',EXECUTION:'체결'})[e.phase] || e.phase} · ${!e.ready?'준비 이력 부족':e.matched?'충족':'불충족'} · ${reasonLabel(e.reason)}`));
+          (e.nodes||[]).forEach(n=>{
+            panel.append(node('p',`조건 ${n.id} · 원문 ${n.sourceId || '공통'} · ${!n.ready?'준비 이력 부족':n.matched?'충족':'불충족'}`));
+            (n.evidence || []).forEach(value=>pairs(panel,[['실제값',value.actualValue ?? '준비 이력 부족'],['기준값',value.referenceValue ?? '준비 이력 부족'],['직전 실제값',value.previousActualValue ?? '—'],['직전 기준값',value.previousReferenceValue ?? '—']]));
+          });evidenceArea.append(panel);
+        });
+      };
+      field(filters,'근거 조회 날짜',selectedDate,v=>{selectedDate=v;draw();},{choices:dates.map(d=>[d,d]),emptyLabel:'모든 날짜'});
+      field(filters,'근거 조회 종목',selectedSymbol,v=>{selectedSymbol=v;draw();},{choices:symbols.map(s=>[s,s]),emptyLabel:'모든 종목'});draw();
+      details(resultArea,'실행 당시 원문·변경 목록',s.strategy.strategy.composition.sources);
+    }
     details(resultArea,'실행 당시 전략',s.strategy.strategy);details(resultArea,'실행 입력·시장 자료',s.execution);
   }
   function renderResult(item) {
-    if(item.snapshot.strategy.strategy.portfolio){renderPortfolioResult(item);return;}
+    if(item.snapshot.strategy.strategy.portfolio || item.snapshot.strategy.strategy.composition){renderPortfolioResult(item);return;}
     displayedRunId = item.id;
     resultArea.replaceChildren(); const snapshot = item.snapshot; const result = snapshot.result;
     resultArea.append(node('h4', `실행 #${item.id} · ${statusLabel(item.status)}`));

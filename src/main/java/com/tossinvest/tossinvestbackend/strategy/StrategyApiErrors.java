@@ -14,7 +14,7 @@ import org.springframework.web.method.annotation.MethodArgumentTypeMismatchExcep
 import java.util.List;
 
 /** Shared error contract, scoped to user strategy APIs only. */
-@RestControllerAdvice(assignableTypes = {UserStrategyBacktestController.class, SavedStrategyController.class, BacktestAnalysisController.class, com.tossinvest.tossinvestbackend.portfolio.PortfolioController.class})
+@RestControllerAdvice(assignableTypes = {UserStrategyBacktestController.class, SavedStrategyController.class, BacktestAnalysisController.class, com.tossinvest.tossinvestbackend.portfolio.PortfolioController.class, com.tossinvest.tossinvestbackend.composite.CompositeController.class})
 public class StrategyApiErrors {
     public record ApiError(String code, String message, List<StrategyValidator.Issue> issues, Long timestamp) { }
 
