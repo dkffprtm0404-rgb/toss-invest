@@ -80,6 +80,38 @@ h1, h2 {
   padding: 36px 40px 60px;
 }
 
+.dashboard-tabs {
+  position: sticky;
+  top: 0;
+  z-index: 40;
+  display: flex;
+  gap: 8px;
+  padding: 12px 0;
+  margin-bottom: 24px;
+  background: var(--bg);
+  border-bottom: 1px solid var(--rule);
+}
+.dashboard-tabs [role="tab"] {
+  flex: 1;
+  min-width: 0;
+  padding: 14px 12px;
+  border: 1px solid var(--rule);
+  border-radius: 6px;
+  background: var(--bg-raised);
+  color: var(--ink-dim);
+  font: 600 15px/1.4 system-ui, sans-serif;
+  cursor: pointer;
+}
+.dashboard-tabs [aria-selected="true"] {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #fff;
+}
+.dashboard-tabs [role="tab"]:focus-visible,
+.dashboard-tab-panel:focus-visible { outline: 2px solid var(--ink); outline-offset: 3px; }
+.dashboard-tab-panel { scroll-margin-top: 90px; }
+.dashboard-tab-panel[hidden] { display: none !important; }
+
 .fx-strip {
   display: flex;
   justify-content: space-between;

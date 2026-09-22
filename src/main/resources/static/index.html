@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>포트폴리오 대시보드</title>
-<link rel="stylesheet" href="/css/dashboard.css">
+<link rel="stylesheet" href="/css/dashboard.css?v=20260922-tabs">
 <link rel="stylesheet" href="/css/strategy-workbench.css?v=20260914-1">
 <link rel="stylesheet" href="/css/strategy-comparison.css?v=20260922-2">
 </head>
@@ -25,13 +25,21 @@
 
 <main class="layout">
 
+  <div class="dashboard-tabs" role="tablist" aria-label="대시보드 화면">
+    <button type="button" id="strategyTab" role="tab" aria-controls="strategyPanel" aria-selected="true">투자 전략</button>
+    <button type="button" id="accountTab" role="tab" aria-controls="accountPanel" aria-selected="false" tabindex="-1">계좌·모의매매</button>
+  </div>
+
+  <div id="strategyPanel" class="dashboard-tab-panel" role="tabpanel" aria-labelledby="strategyTab" tabindex="0">
   <section id="strategyWorkbench" aria-label="자연어 전략 작성과 백테스트">
     <noscript>전략 작업 화면은 JavaScript가 필요합니다. 브라우저에서 JavaScript를 활성화해 주세요.</noscript>
   </section>
 
   <!-- 저장 전략 비교 -->
   <section id="strategyComparison" aria-label="저장 전략 비교"></section>
+  </div>
 
+  <div id="accountPanel" class="dashboard-tab-panel" role="tabpanel" aria-labelledby="accountTab" tabindex="0" hidden>
   <!-- 환율 스트립 -->
   <section class="fx-strip" id="fxStrip">
     <div class="fx-item">
@@ -219,11 +227,12 @@
     <span id="lastUpdated">최초 호출 전</span>
     <button id="refreshBtn" class="refresh-btn">REFRESH</button>
   </footer>
+  </div>
 
 </main>
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.js"></script>
-<script src="/js/dashboard.js"></script>
+<script src="/js/dashboard.js?v=20260922-tabs"></script>
 <script src="/js/strategy-results.js?v=20260914-1"></script>
 <script src="/js/strategy-comparison.js?v=20260922-2"></script>
 <script src="/js/strategy-workbench.js?v=20260922-2"></script>
