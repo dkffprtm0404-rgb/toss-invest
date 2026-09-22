@@ -19,14 +19,17 @@ public class SavedStrategyService {
     private final StrategyValidator validator;
     private final StrategyJson json;
     private final SavedBacktestRepository runs;
+    private final com.tossinvest.tossinvestbackend.comparison.ComparisonRepository comparisons;
 
     public SavedStrategyService(SavedStrategyRepository strategies, SavedStrategyVersionRepository versions,
-                                StrategyValidator validator, StrategyJson json, SavedBacktestRepository runs) {
+                                StrategyValidator validator, StrategyJson json, SavedBacktestRepository runs,
+                                com.tossinvest.tossinvestbackend.comparison.ComparisonRepository comparisons) {
         this.strategies = strategies;
         this.versions = versions;
         this.validator = validator;
         this.json = json;
         this.runs = runs;
+        this.comparisons = comparisons;
     }
 
     public record SavedVersion(long id, int version, Instant createdAt, Instant versionCreatedAt, StrategyDefinition strategy) { }
@@ -35,6 +38,7 @@ public class SavedStrategyService {
     @Transactional
     public void delete(long id) {
         requireForUpdate(id);
+        comparisons.deleteAll(comparisons.forStrategy(id));
         // Remove dependent rows in one transaction; candle data belongs to the shared cache.
         runs.deleteForStrategy(id);
         versions.deleteForStrategy(id);

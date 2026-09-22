@@ -580,17 +580,24 @@
   const versions = node('div', null, 'sw-list');
   const versionMore = button('버전 20개 더 보기', () => operation('버전 불러오는 중…', async () => { await loadVersions(true); notify('버전 목록을 불러왔습니다.'); })); versionMore.hidden = true;
   library.append(button('전략 목록 새로고침', () => operation('전략 불러오는 중…', async () => { await loadStrategies(false); notify('전략 목록을 새로고침했습니다.'); })), strategyList, strategyMore, selection, versions, versionMore);
+  if (window.StrategyComparison) selection.after(button('선택 버전을 비교에 추가', () => {
+    if (!selected) { notify('저장된 전략과 버전을 먼저 선택하세요.', true); return; }
+    window.StrategyComparison.add(selected);
+    document.getElementById('strategyComparison')?.scrollIntoView({behavior:'smooth',block:'start'});
+  }));
   async function loadStrategies(more) {
     const page = more ? strategyPage + 1 : 0;
     const entries = await api(`/api/strategies?page=${page}&size=20`);
+    window.StrategyComparison?.setLibrary(entries,more);
     if (!more) strategyList.replaceChildren();
     if (!entries.length && !more) strategyList.append(node('p', '저장된 전략이 없습니다. 위에서 첫 전략을 작성해 주세요.', 'sw-muted'));
     entries.forEach(saved => {
       const row = node('div', null, 'sw-list-row');
+      row.append(node('span',saved.strategy.composition?'조합 전략':saved.strategy.portfolio?'포트폴리오':'단일 종목','sw-strategy-type'));
       row.append(button(`${saved.strategy.name || '이름 없음'} · #${saved.id} · 최신 v${saved.version}`,
         () => operation('전략과 이력 불러오는 중…', async () => { await selectSaved(await api(`/api/strategies/${saved.id}`)); notify('저장된 전략을 불러왔습니다. 수정한 내용은 검증 후 새 버전으로 저장하세요.'); })),
         button(`전략 #${saved.id} 삭제`, () => {
-          if (state.busy || !window.confirm(`“${saved.strategy.name || '이름 없음'}” 전략 #${saved.id}의 모든 버전과 실행 이력을 삭제합니다. 복구할 수 없습니다. 삭제하시겠습니까?`)) return;
+          if (state.busy || !window.confirm(`“${saved.strategy.name || '이름 없음'}” 전략 #${saved.id}의 모든 버전과 실행 이력, 이 전략이 포함된 비교 이력 전체를 삭제합니다. 복구할 수 없습니다. 삭제하시겠습니까?`)) return;
           operation('전략 삭제 중…', async () => {
             await api(`/api/strategies/${saved.id}`, 'DELETE');
             if (selected?.id === saved.id) {
@@ -873,6 +880,7 @@
       notify(current.ready ? '전략을 입력하거나 저장된 전략을 선택하세요.' : current.message || 'Codex 로그인 상태를 확인해 주세요.', !current.ready);
     } catch (error) { status.textContent = 'Codex 연결 상태를 확인할 수 없습니다.'; throw error; }
   }
+  window.StrategyWorkbenchPresentation = { snapshotRules, ruleSummary, percentToRate };
   renderEditor();
   operation('작업 화면 준비 중…', async () => {
     // Keep saved-strategy access available even if Codex is not installed or logged in.

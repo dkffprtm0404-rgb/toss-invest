@@ -25,8 +25,8 @@ class StrategyPersistenceRestartTests {
 
     @Configuration(proxyBeanMethods = false)
     @EnableAutoConfiguration
-    @EntityScan(basePackageClasses = {SavedStrategyEntity.class, CandleEntity.class})
-    @EnableJpaRepositories(basePackageClasses = {SavedStrategyRepository.class, CandleRepository.class})
+    @EntityScan(basePackageClasses = {SavedStrategyEntity.class, CandleEntity.class, com.tossinvest.tossinvestbackend.comparison.ComparisonEntity.class})
+    @EnableJpaRepositories(basePackageClasses = {SavedStrategyRepository.class, CandleRepository.class, com.tossinvest.tossinvestbackend.comparison.ComparisonRepository.class})
     @Import({SavedStrategyService.class, SavedBacktestService.class, StrategyValidator.class,
             StrategyEvaluator.class, UserStrategyBacktestEngine.class, StrategyJson.class})
     static class PersistenceApplication { }
