@@ -25,6 +25,11 @@
   const start=field(form,'비교 시작일','date'),end=field(form,'비교 종료일','date');
   const mode=field(form,'비교 체결 방식','select',[['SAME_DAY_CLOSE','신호 당일 종가'],['NEXT_DAY_OPEN','신호 다음 거래일 시가']]);
   const capital=field(accountFields,'비교 초기자금 (원)','number'),commission=field(accountFields,'비교 수수료율 (%)','number'),tax=field(accountFields,'비교 매도세율 (%)','number'),slippage=field(accountFields,'비교 슬리피지율 (%)','number');
+  function hint(input,message){const note=el('small',message,'sc-field-help');note.id=`${input.id}-help`;input.setAttribute('aria-describedby',note.id);input.parentElement.append(note);}
+  symbol.placeholder='예: 005930';hint(symbol,'종목명 대신 코드를 입력하세요. 예: 삼성전자 005930');
+  capital.placeholder='원 단위 숫자';hint(capital,'쉼표 없이 원 단위로 입력합니다.');
+  [commission,tax,slippage].forEach(input=>{input.placeholder='미적용 시 0';});
+  hint(commission,'예: 0.015%는 0.015로 입력');hint(tax,'매도할 때 적용할 세율');hint(slippage,'체결 가격에 반영할 불리한 가격 차이');
   accountFields.append(el('p','초기자금과 비용률을 직접 지정하세요. 비용을 적용하지 않을 때도 각각 0을 입력합니다.'));
   const universe=field(accountFields,'비교 시장·거래일 자료 (JSON)','textarea');universe.maxLength=1900000;
   universe.placeholder='{"source":"자료 출처와 범위","tradingDates":["2025-01-02"],"members":[{"symbol":"005930","market":"KOSPI","from":"2025-01-02","to":null}]}';
@@ -33,7 +38,11 @@
   const candidates=el('div',null,'sc-candidates'),requirement=el('p',null,'sc-caution');
   requirement.id='sc-run-requirement';requirement.setAttribute('aria-live','polite');run.setAttribute('aria-describedby',requirement.id);
   const more=button('비교 이력 20개 더 보기',()=>loadHistory(true));more.hidden=true;
-  root.append(feedback,picks,candidates,form,accountFields,requirement,run,result,el('h3','저장된 비교 이력'),button('비교 이력 새로고침',()=>loadHistory(false)),history,more);
+  const workspace=el('div',null,'sc-workspace'),selectionPanel=el('section',null,'sc-selection-panel'),settingsPanel=el('section',null,'sc-settings-panel');
+  selectionPanel.append(el('h3','1. 비교할 전략 선택'),picks,candidates);
+  settingsPanel.append(el('h3','2. 공통 실행 조건'),el('p','선택한 모든 전략에 아래 조건을 동일하게 적용합니다.','sc-field-help'),form,accountFields,requirement,run);
+  workspace.append(selectionPanel,settingsPanel);
+  root.append(feedback,workspace,result,el('h3','저장된 비교 이력'),button('비교 이력 새로고침',()=>loadHistory(false)),history,more);
   function renderCandidates(){
     candidates.replaceChildren(el('h3','비교에 추가할 저장 전략'));
     candidates.append(el('p','불러온 전략 목록에서 같은 유형의 최신 버전을 바로 추가합니다. 과거 버전은 위 저장 전략 목록에서 선택하세요.'));

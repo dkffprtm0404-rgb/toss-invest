@@ -162,7 +162,18 @@
   controls.append(node('legend', '전략 작성과 백테스트', 'sw-sr-only'));
   root.append(node('span', 'STRATEGY WORKBENCH', 'sw-eyebrow'), node('h2', '내 말로 만드는 투자 전략'),
     node('p', '자연어 입력 → 조건 확인·저장 → 백테스트 → 실행 이력', 'sw-intro'), status, notice, controls);
-  function block(title) { const el = node('section', null, 'sw-block'); el.append(node('h3', title)); controls.append(el); return el; }
+  const steps = [
+    ['strategy-write','1. 전략 작성','매수·매도 조건과 손절 기준을 문장으로 입력하세요.'],
+    ['strategy-edit','2. 확인·저장','해석된 조건을 검증하고 확인한 뒤 저장하세요.'],
+    ['strategy-library','3. 저장 전략','전략을 선택한 뒤 실행할 버전을 확인하세요.'],
+    ['strategy-run','4. 백테스트','선택한 저장 버전에 적용할 종목과 기간을 입력하세요.'],
+    ['strategy-results','5. 실행 결과','실행 결과와 과거에 저장한 이력을 확인하세요.']
+  ];
+  const navigation = node('nav', null, 'sw-navigation'); navigation.setAttribute('aria-label','전략 작업 바로가기');
+  [...steps, ['strategyComparison','전략 비교']].forEach(([id,label]) => { const link=node('a',label);link.href=`#${id}`;navigation.append(link); });
+  root.insertBefore(navigation,status);
+  let blockIndex = 0;
+  function block(title) { const el = node('section', null, 'sw-block'); const step=steps[blockIndex++]; el.id=step[0];el.tabIndex=-1;el.append(node('h3', title),node('p',step[2],'sw-section-help')); controls.append(el); return el; }
   function field(parent, labelText, value, onInput, options) {
     const wrap = node('label', null, 'sw-field');
     wrap.append(node('span', labelText));
@@ -202,7 +213,7 @@
   }
   const write = block('1. 전략을 설명해 주세요');
   const prompt = field(write, '전략 원문', '', sync, { textarea: true, maxLength: 6000,
-    placeholder: '여러 전략을 제목이나 번호로 구분해 입력할 수 있습니다. 각각의 초안으로 나누어 확인합니다.' });
+    placeholder: '예: 5일 이동평균선이 20일 이동평균선을 상향 돌파하면 매수하고, 매수가보다 5% 하락하면 손절해 줘.\n여러 전략은 제목이나 번호로 구분해 주세요.' });
   const interpret = button('Codex로 조건 해석', () => operation('Codex가 조건을 정리하고 있습니다. 최대 2분 정도 걸릴 수 있습니다…', async () => {
     if (!prompt.value.trim()) throw new Error('전략 원문을 입력해 주세요.');
     const result = await api('/api/strategy-assistant/interpret-batch', 'POST', { prompt: prompt.value });
@@ -737,7 +748,8 @@
   }
   function snapshotRules(parent, strategy) {
     parent.append(node('h4', '실행 당시 전략 조건'));
-    ['entry', 'exit'].forEach(key => {
+    if (strategy.composition) parent.append(node('p', '진입·청산은 아래 조합 조건을 확인하세요.'));
+    else ['entry', 'exit'].forEach(key => {
       const group = strategy[key];
       parent.append(node('p', `${key === 'entry' ? '진입' : '청산'} · ${!group ? '없음' : group.operator === 'AND' ? '모두 충족' : group.operator === 'OR' ? '하나 이상 충족' : '단일 조건'}`));
       if (group) { const list = node('ul'); (group.conditions || []).forEach(c => list.append(node('li', ruleSummary(c)))); parent.append(list); }

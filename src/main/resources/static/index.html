@@ -4,9 +4,9 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>포트폴리오 대시보드</title>
-<link rel="stylesheet" href="/css/dashboard.css?v=20260922-tabs">
-<link rel="stylesheet" href="/css/strategy-workbench.css?v=20260914-1">
-<link rel="stylesheet" href="/css/strategy-comparison.css?v=20260922-2">
+<link rel="stylesheet" href="/css/dashboard.css?v=20260923-review">
+<link rel="stylesheet" href="/css/strategy-workbench.css?v=20260923-review">
+<link rel="stylesheet" href="/css/strategy-comparison.css?v=20260923-review">
 </head>
 <body>
 <div class="grain"></div>
@@ -40,6 +40,19 @@
   </div>
 
   <div id="accountPanel" class="dashboard-tab-panel" role="tabpanel" aria-labelledby="accountTab" tabindex="0" hidden>
+  <div class="page-intro">
+    <h2>내 계좌와 모의매매</h2>
+    <p>보유 자산을 확인하고, 모의매매 성과와 거래 기록을 살펴보세요.</p>
+  </div>
+  <nav class="account-navigation" aria-label="계좌 화면 바로가기">
+    <a href="#account-overview">계좌·보유 종목</a>
+    <a href="#paper-trading">페이퍼 트레이딩</a>
+    <a href="#scalping-simulation">단타 시뮬레이션</a>
+  </nav>
+  <div class="foot-note account-toolbar">
+    <span id="lastUpdated">최초 호출 전</span>
+    <button id="refreshBtn" class="refresh-btn">계좌·시세 새로고침</button>
+  </div>
   <!-- 환율 스트립 -->
   <section class="fx-strip" id="fxStrip">
     <div class="fx-item">
@@ -50,7 +63,7 @@
     <div class="fx-meta" id="fxValidUntil">유효시각 확인 중…</div>
   </section>
 
-  <div class="main-grid">
+  <div class="main-grid" id="account-overview" tabindex="-1">
 
     <!-- 좌측: 계좌 + 요약 -->
     <section class="panel account-panel">
@@ -75,7 +88,7 @@
     </section>
 
     <!-- 우측: 보유 종목 -->
-    <section class="panel holdings-panel">
+    <section class="panel holdings-panel" tabindex="0" aria-label="보유 종목 표">
       <div class="panel-head">
         <span class="panel-eyebrow">02 — HOLDINGS</span>
         <h2>보유 종목</h2>
@@ -144,13 +157,13 @@
   </section>
 
   <!-- 페이퍼 트레이딩 패널 -->
-  <section class="panel paper-panel">
+  <section class="panel paper-panel" id="paper-trading" tabindex="-1">
     <div class="panel-head">
       <span class="panel-eyebrow">05 — PAPER TRADING</span>
       <h2>페이퍼 트레이딩</h2>
       <button id="runPaperBtn" class="refresh-btn" style="margin-left:auto">▶ 지금 실행 (장 마감 후 권장)</button>
     </div>
-    <p style="font-size:0.78rem;opacity:0.6;margin:0 0 0.8rem 0">
+    <p class="trading-note">
       ⚠️ 일봉 기준 전략 — 장 중 실행 시 당일 거래량 미완성으로 신호가 부정확합니다. 매일 <b>15:40</b> 자동 실행됩니다.
     </p>
 
@@ -161,7 +174,7 @@
       <div class="summary-row"><span class="summary-label">누적 수익률</span><span class="summary-value" id="ptCumReturn">—</span></div>
     </div>
 
-    <div class="paper-section">
+    <div class="paper-section" tabindex="0" role="region" aria-label="페이퍼 트레이딩 보유 내역">
       <span class="quote-block-label">보유 중 (OPEN)</span>
       <table class="holdings-table" id="ptOpenTable">
         <thead><tr><th>종목</th><th>매수일</th><th class="num">매수가</th><th class="num">현재 peakRate</th><th></th></tr></thead>
@@ -169,7 +182,7 @@
       </table>
     </div>
 
-    <div class="paper-section" style="margin-top:1.2rem">
+    <div class="paper-section" style="margin-top:1.2rem" tabindex="0" role="region" aria-label="페이퍼 트레이딩 최근 거래">
       <span class="quote-block-label">최근 거래 기록</span>
       <table class="holdings-table" id="ptHistoryTable">
         <thead><tr><th>종목</th><th>매수일</th><th>청산일</th><th class="num">수익률</th><th>청산사유</th></tr></thead>
@@ -189,13 +202,13 @@
   </section>
 
   <!-- 1분봉 단타 시뮬레이션 패널 -->
-  <section class="panel paper-panel">
+  <section class="panel paper-panel" id="scalping-simulation" tabindex="-1">
     <div class="panel-head">
       <span class="panel-eyebrow">06 — SCALPING SIM (1분봉)</span>
-      <h2>단타 시뮬레이션 <small style="font-size:0.7rem;opacity:0.6">코스피 TOP10 · 목표+2/3% · 손절-0.6%</small></h2>
+      <h2>단타 시뮬레이션 <small class="panel-subtitle">코스피 TOP10 · 목표+2/3% · 손절-0.6%</small></h2>
       <button id="scalpTickBtn" class="refresh-btn" style="margin-left:auto">▶ 지금 스캔</button>
     </div>
-    <p style="font-size:0.78rem;opacity:0.6;margin:0 0 0.8rem 0">
+    <p class="trading-note">
       ⚡ 매 1분 자동 실행 (09:01~15:20) — 골든크로스 + 거래량 1.5배 조건
     </p>
 
@@ -206,7 +219,7 @@
       <div class="summary-row"><span class="summary-label">현재 보유</span><span class="summary-value" id="scOpenCount">—</span></div>
     </div>
 
-    <div class="paper-section">
+    <div class="paper-section" tabindex="0" role="region" aria-label="단타 시뮬레이션 보유 내역">
       <span class="quote-block-label">보유 중 (OPEN)</span>
       <table class="holdings-table">
         <thead><tr><th>종목</th><th>진입시간</th><th class="num">진입가</th><th class="num">EMA5/20</th></tr></thead>
@@ -214,7 +227,7 @@
       </table>
     </div>
 
-    <div class="paper-section" style="margin-top:1.2rem">
+    <div class="paper-section" style="margin-top:1.2rem" tabindex="0" role="region" aria-label="단타 시뮬레이션 최근 거래">
       <span class="quote-block-label">최근 거래 기록</span>
       <table class="holdings-table">
         <thead><tr><th>종목</th><th>진입</th><th>청산</th><th class="num">수익률</th><th>청산사유</th></tr></thead>
@@ -223,10 +236,6 @@
     </div>
   </section>
 
-  <footer class="foot-note">
-    <span id="lastUpdated">최초 호출 전</span>
-    <button id="refreshBtn" class="refresh-btn">REFRESH</button>
-  </footer>
   </div>
 
 </main>
@@ -234,7 +243,7 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.js"></script>
 <script src="/js/dashboard.js?v=20260922-tabs"></script>
 <script src="/js/strategy-results.js?v=20260914-1"></script>
-<script src="/js/strategy-comparison.js?v=20260922-2"></script>
-<script src="/js/strategy-workbench.js?v=20260922-2"></script>
+<script src="/js/strategy-comparison.js?v=20260923-ux"></script>
+<script src="/js/strategy-workbench.js?v=20260923-review"></script>
 </body>
 </html>
