@@ -160,8 +160,13 @@
   const notice = node('p', '', 'sw-notice'); notice.setAttribute('role', 'status'); notice.setAttribute('aria-live', 'polite');
   const controls = node('fieldset', null, 'sw-controls');
   controls.append(node('legend', '전략 작성과 백테스트', 'sw-sr-only'));
-  root.append(node('span', 'STRATEGY WORKBENCH', 'sw-eyebrow'), node('h2', '내 말로 만드는 투자 전략'),
-    node('p', '자연어 입력 → 조건 확인·저장 → 백테스트 → 실행 이력', 'sw-intro'), status, notice, controls);
+  const heading = node('header', null, 'sw-heading');
+  heading.append(
+    node('span', 'STRATEGY WORKBENCH', 'sw-eyebrow'),
+    node('h2', '내 말로 만드는 투자 전략'),
+    node('p', '매수부터 매도까지, 생각한 조건을 기록하고 과거 데이터로 확인하세요.', 'sw-intro')
+  );
+  root.append(heading, status, notice, controls);
   const steps = [
     ['strategy-write','1. 전략 작성','매수·매도 조건과 손절 기준을 문장으로 입력하세요.'],
     ['strategy-edit','2. 확인·저장','해석된 조건을 검증하고 확인한 뒤 저장하세요.'],
@@ -169,11 +174,24 @@
     ['strategy-run','4. 백테스트','선택한 저장 버전에 적용할 종목과 기간을 입력하세요.'],
     ['strategy-results','5. 실행 결과','실행 결과와 과거에 저장한 이력을 확인하세요.']
   ];
-  const navigation = node('nav', null, 'sw-navigation'); navigation.setAttribute('aria-label','전략 작업 바로가기');
-  [...steps, ['strategyComparison','전략 비교']].forEach(([id,label]) => { const link=node('a',label);link.href=`#${id}`;navigation.append(link); });
-  root.insertBefore(navigation,status);
+  const navigation = node('nav', null, 'sw-navigation');
+  navigation.setAttribute('aria-label', '전략 작업 바로가기');
+  [...steps, ['strategyComparison', '전략 비교']].forEach(([id, label]) => {
+    const link = node('a', label);
+    link.href = `#${id}`;
+    navigation.append(link);
+  });
+  root.insertBefore(navigation, status);
   let blockIndex = 0;
-  function block(title) { const el = node('section', null, 'sw-block'); const step=steps[blockIndex++]; el.id=step[0];el.tabIndex=-1;el.append(node('h3', title),node('p',step[2],'sw-section-help')); controls.append(el); return el; }
+  function block(title) {
+    const section = node('section', null, 'sw-block');
+    const [id, , description] = steps[blockIndex++];
+    section.id = id;
+    section.tabIndex = -1;
+    section.append(node('h3', title), node('p', description, 'sw-section-help'));
+    controls.append(section);
+    return section;
+  }
   function field(parent, labelText, value, onInput, options) {
     const wrap = node('label', null, 'sw-field');
     wrap.append(node('span', labelText));

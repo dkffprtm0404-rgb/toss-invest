@@ -4,17 +4,20 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>포트폴리오 대시보드</title>
-<link rel="stylesheet" href="/css/dashboard.css?v=20260923-review">
-<link rel="stylesheet" href="/css/strategy-workbench.css?v=20260923-review">
-<link rel="stylesheet" href="/css/strategy-comparison.css?v=20260923-review">
+<link rel="stylesheet" href="/css/dashboard.css?v=20260923-design">
+<link rel="stylesheet" href="/css/strategy-workbench.css?v=20260923-design">
+<link rel="stylesheet" href="/css/strategy-comparison.css?v=20260923-design">
 </head>
 <body>
-<div class="grain"></div>
+<a class="skip-link" href="#main-content">본문 바로가기</a>
 
 <header class="topbar">
   <div class="topbar-left">
-    <span class="ticker-mark">●</span>
-    <h1>PORTFOLIO LEDGER</h1>
+    <span class="brand-mark" aria-hidden="true"></span>
+    <div class="brand-name">
+      <span class="brand-title">TOSS INVEST</span>
+      <span class="brand-caption">Portfolio &amp; Strategy</span>
+    </div>
   </div>
   <div class="topbar-right">
     <span id="clock" class="clock">--:--:--</span>
@@ -23,7 +26,13 @@
   </div>
 </header>
 
-<main class="layout">
+<main id="main-content" class="layout" tabindex="-1">
+
+  <div class="page-heading">
+    <p class="page-kicker">PORTFOLIO LEDGER</p>
+    <h1>투자의 기준을 세우다.</h1>
+    <p class="page-description">전략을 기록하고, 결과를 확인하고, 내 계좌를 살펴보세요.</p>
+  </div>
 
   <div class="dashboard-tabs" role="tablist" aria-label="대시보드 화면">
     <button type="button" id="strategyTab" role="tab" aria-controls="strategyPanel" aria-selected="true">투자 전략</button>
@@ -161,7 +170,7 @@
     <div class="panel-head">
       <span class="panel-eyebrow">05 — PAPER TRADING</span>
       <h2>페이퍼 트레이딩</h2>
-      <button id="runPaperBtn" class="refresh-btn" style="margin-left:auto">▶ 지금 실행 (장 마감 후 권장)</button>
+      <button id="runPaperBtn" class="refresh-btn">▶ 지금 실행 (장 마감 후 권장)</button>
     </div>
     <p class="trading-note">
       ⚠️ 일봉 기준 전략 — 장 중 실행 시 당일 거래량 미완성으로 신호가 부정확합니다. 매일 <b>15:40</b> 자동 실행됩니다.
@@ -182,7 +191,7 @@
       </table>
     </div>
 
-    <div class="paper-section" style="margin-top:1.2rem" tabindex="0" role="region" aria-label="페이퍼 트레이딩 최근 거래">
+    <div class="paper-section" tabindex="0" role="region" aria-label="페이퍼 트레이딩 최근 거래">
       <span class="quote-block-label">최근 거래 기록</span>
       <table class="holdings-table" id="ptHistoryTable">
         <thead><tr><th>종목</th><th>매수일</th><th>청산일</th><th class="num">수익률</th><th>청산사유</th></tr></thead>
@@ -190,7 +199,7 @@
       </table>
     </div>
 
-    <div class="paper-section" style="margin-top:1.2rem">
+    <div class="paper-section">
       <span class="quote-block-label">A안(트레일링) vs B안(즉시익절+5%) 비교 — 9차 보정 검증항목</span>
       <div class="paper-summary" id="quick5CompareSummary">
         <div class="summary-row"><span class="summary-label">+5% 도달 거래수</span><span class="summary-value" id="q5Count">—</span></div>
@@ -206,7 +215,7 @@
     <div class="panel-head">
       <span class="panel-eyebrow">06 — SCALPING SIM (1분봉)</span>
       <h2>단타 시뮬레이션 <small class="panel-subtitle">코스피 TOP10 · 목표+2/3% · 손절-0.6%</small></h2>
-      <button id="scalpTickBtn" class="refresh-btn" style="margin-left:auto">▶ 지금 스캔</button>
+      <button id="scalpTickBtn" class="refresh-btn">▶ 지금 스캔</button>
     </div>
     <p class="trading-note">
       ⚡ 매 1분 자동 실행 (09:01~15:20) — 골든크로스 + 거래량 1.5배 조건
@@ -227,7 +236,7 @@
       </table>
     </div>
 
-    <div class="paper-section" style="margin-top:1.2rem" tabindex="0" role="region" aria-label="단타 시뮬레이션 최근 거래">
+    <div class="paper-section" tabindex="0" role="region" aria-label="단타 시뮬레이션 최근 거래">
       <span class="quote-block-label">최근 거래 기록</span>
       <table class="holdings-table">
         <thead><tr><th>종목</th><th>진입</th><th>청산</th><th class="num">수익률</th><th>청산사유</th></tr></thead>
@@ -240,10 +249,15 @@
 
 </main>
 
+<footer class="site-footer">
+  <span>TOSS INVEST</span>
+  <span>나의 전략과 투자 기록</span>
+</footer>
+
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.js"></script>
 <script src="/js/dashboard.js?v=20260922-tabs"></script>
 <script src="/js/strategy-results.js?v=20260914-1"></script>
 <script src="/js/strategy-comparison.js?v=20260923-ux"></script>
-<script src="/js/strategy-workbench.js?v=20260923-review"></script>
+<script src="/js/strategy-workbench.js?v=20260923-design"></script>
 </body>
 </html>
