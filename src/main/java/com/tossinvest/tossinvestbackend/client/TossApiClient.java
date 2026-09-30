@@ -34,13 +34,8 @@ public class TossApiClient {
                 .uri(uri)
                 .header("Authorization", "Bearer " + accessToken)
                 .retrieve()
-                .onStatus(status -> status.is4xxClientError(), response ->
-                        response.bodyToMono(String.class).defaultIfEmpty("(empty body)")
-                                .flatMap(body -> {
-                                    log.warn("[TossApiClient] {} 응답 - 요청: {}, 바디: {}", response.statusCode(), uri, body);
-                                    return reactor.core.publisher.Mono.error(new RuntimeException(
-                                            "토스 API " + response.statusCode() + " 응답 바디: " + body));
-                                }))
+                .onStatus(status -> status.isError(), response -> response.createException()
+                        .doOnNext(error -> log.warn("[TossApiClient] HTTP {}", error.getStatusCode().value())))
                 .bodyToMono(responseType)
                 .block();
     }
@@ -61,7 +56,8 @@ public class TossApiClient {
 
     /**
      * UriBuilder를 사용해 쿼리 파라미터가 필요한 GET 요청을 처리한다.
-     * 4xx 응답 시 토스 API가 반환한 에러 응답 바디를 그대로 예외 메시지에 포함시켜 원인 파악이 쉽도록 한다.
+     * HTTP 상태를 보존하여 호출 측에서 요청·인증·호출 제한·서버 오류를 구분한다.
+     * 인증 정보나 제공업체 응답 원문은 로그에 출력하지 않는다.
      */
     public <T> T get(Function<UriBuilder, URI> uriFunction, Class<T> responseType) {
         String accessToken = oAuthService.getAccessToken();
@@ -70,16 +66,8 @@ public class TossApiClient {
                 .uri(uriFunction)
                 .header("Authorization", "Bearer " + accessToken)
                 .retrieve()
-                .onStatus(status -> status.is4xxClientError(), response ->
-                        response.bodyToMono(String.class).defaultIfEmpty("(empty body)")
-                                .flatMap(body -> {
-                                    log.warn("[TossApiClient] {} 응답 - 요청: {}, 바디: {}", response.statusCode(), uriFunction, body);
-                                    // 429 Too Many Requests: Rate Limit 에러임을 명시
-                                    String msg = response.statusCode().value() == 429
-                                            ? "토스 API Rate Limit 초과 (429): " + body
-                                            : "토스 API " + response.statusCode() + " 응답 바디: " + body;
-                                    return reactor.core.publisher.Mono.error(new RuntimeException(msg));
-                                }))
+                .onStatus(status -> status.isError(), response -> response.createException()
+                        .doOnNext(error -> log.warn("[TossApiClient] HTTP {}", error.getStatusCode().value())))
                 .bodyToMono(responseType)
                 .block();
     }

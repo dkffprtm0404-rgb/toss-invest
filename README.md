@@ -18,41 +18,23 @@ src/main/java/.../
 ├── paper/      # 페이퍼 트레이딩 (스케줄러, 배치 처리)
 ```
 
-## ⚠️ 실행 전 필수 설정 (API 키)
+## 실제 토스 계좌·시세 연결 설정
 
-이 저장소/압축파일에는 **보안을 위해 실제 API 키를 포함하지 않았습니다.**
-실행하려면 아래 위치에 본인의 키를 직접 채워 넣어야 합니다.
-
-### 1. `src/main/resources/application.yml` (또는 `application-secret.yml`)
-
-아래와 같이 **플레이스홀더(`YOUR_API_KEY_HERE` 등)로 표시된 항목**을 본인의 실제 값으로 교체하세요:
+실제 계좌·시세 기능은 `toss.oauth.client-id`와 `toss.oauth.client-secret`을 사용합니다. 다음 내용을 Git에서 제외된 `src/main/resources/application-local.yaml`에 두고 환경변수 `TOSS_OAUTH_CLIENT_ID`, `TOSS_OAUTH_CLIENT_SECRET`에 본인 값을 설정할 수 있습니다.
 
 ```yaml
-# TODO: 아래 항목에 실제 값을 입력하세요
-your-broker:
-  api-key: YOUR_API_KEY_HERE
-  api-secret: YOUR_API_SECRET_HERE
-  account-no: YOUR_ACCOUNT_NUMBER_HERE
+toss:
+  oauth:
+    client-id: ${TOSS_OAUTH_CLIENT_ID}
+    client-secret: ${TOSS_OAUTH_CLIENT_SECRET}
 ```
 
-> ※ 실제 프로퍼티 이름(`your-broker.api-key` 등)은 예시입니다.
-> 본인의 `application.yml`을 열어 **API 키/시크릿/계좌번호 등 민감한 값이 하드코딩된 모든 위치**를 찾아 위와 같이 플레이스홀더로 바꿔주세요.
-> (검색 팁: 파일 내에서 `key`, `secret`, `token`, `password` 등의 키워드로 검색하면 빠르게 찾을 수 있습니다.)
-
-### 2. 환경변수 사용을 권장
-
-가능하면 `application.yml`에는 아래처럼 환경변수 참조만 남기고, 실제 값은 로컬 환경변수나 `.env` 파일로 분리하는 것을 권장합니다:
-
-```yaml
-your-broker:
-  api-key: ${BROKER_API_KEY}
-  api-secret: ${BROKER_API_SECRET}
-```
+Codex의 자연어 해석·AI 설명은 별도의 ChatGPT 로그인 연결을 사용합니다. 아래 **9단계 자동 통합 검증**은 테스트용 설정과 고정 응답을 사용하므로 토스 인증 정보와 Codex 로그인 없이 실행할 수 있습니다.
 
 ## 실행 방법
 
-1. 위 API 키 설정 완료
-2. `./gradlew bootRun` (또는 IDE에서 `Application` 클래스 실행)
+1. Java 17 및 위 로컬 앱 설정 준비(자동 통합 검증만 실행할 때는 아래 9단계 명령 사용)
+2. `./gradlew bootRun` (Windows PowerShell: `.\gradlew.bat bootRun`, 또는 IDE에서 `Application` 클래스 실행)
 3. 서버는 기본적으로 `8090` 포트에서 실행됩니다.
 
 ## 참고사항
@@ -110,3 +92,28 @@ $env:JAVA_HOME = 'C:/Program Files/Java/jdk-17'
 저장 전략에서 버전을 선택하고 **선택 버전을 비교에 추가**를 누르면 같은 유형의 전략 2~6개를 공통 조건·동일 일봉 데이터로 비교할 수 있습니다. 조건·수익률·낙폭·거래 횟수·성과 곡선과 원본 근거를 표시하고 비교 이력을 저장합니다. 비교 실행은 AI를 호출하지 않습니다.
 
 단일 종목 비교는 자금·비용 미반영 거래 수익률 합계이며, 포트폴리오·조합 비교는 입력한 자금·비용을 반영한 계좌 지표입니다. 다른 유형끼리의 비교는 지원하지 않습니다. 적용하려면 서버 재시작과 브라우저 강력 새로고침이 필요합니다. 자세한 사용법·API·검증은 [저장 전략 비교 안내](.docs/strategy-comparison.md)를 참고하세요.
+
+## 저장 전략 모의매매 (8단계 A)
+
+저장한 단일 종목 전략의 버전을 선택하고 **이 버전으로 모의매매**를 누르면 전략별 가상 계좌를 시작할 수 있습니다. 국내 주식 종목·체결 방식·초기자금·매수 비중·비용을 명시하며, 실행 당시 전략 버전과 계좌·거래 이력을 보존합니다.
+
+생성 다음 한국 날짜부터의 확정 일봉을 사용하므로 시작 직후에는 데이터 대기가 정상입니다. **신규 매수 중지** 이후 보유분은 원래 청산 조건으로 관리합니다. 사용법, 중복 실행 제한과 시세 오류 처리는 [전략별 모의매매 안내](.docs/strategy-paper-trading.md)를 참고하세요.
+
+## 통합 검증과 발표·시연 (9단계)
+
+[통합 검증·시연 안내](.docs/integration-demo.md)에 정상 흐름, 잘못된 입력·데이터 부족·거래 없음·AI 실패·재시작·중복 실행의 확인 기준과 발표 순서를 정리했습니다. 고정 [전략 A](src/test/resources/demo/strategy-a.json)·[전략 B](src/test/resources/demo/strategy-b.json)와 [합성 일봉 CSV](src/test/resources/demo/candles.csv)를 같은 저장 전략의 백테스트 → 비교 → 모의매매 연결 테스트에서 사용합니다.
+
+같은 안내의 **발표 질문** 절에는 실제 저장 필드, 현재 앱에서 읽어 확인한 전략 예시, **AI 해석 → 서버 검증 → 사용자 검토 → 버전 저장 → Java 백테스트 → 당시 결과 조회** 흐름과 발표용 답변을 추가했습니다.
+
+Java 17, Node.js, Playwright, Microsoft Edge가 준비된 환경에서 저장소 루트의 PowerShell로 실행합니다.
+
+```powershell
+.\scripts\verify-stage9.ps1 -Offline
+
+# 설치 위치가 다르면 지정합니다. Gradle 캐시가 없으면 -Offline을 생략합니다.
+# .\scripts\verify-stage9.ps1 -JavaHome 'C:/Program Files/Java/jdk-17' -NodeModules 'C:/tools/node_modules'
+```
+
+스크립트는 전체 Java 테스트·JAR 빌드, 실제 HTTP·H2·브라우저 흐름, Node 화면 회귀를 재실행합니다. AI·시세는 고정 테스트 응답을 사용하고 운영 DB와 분리된 테스트 DB를 사용합니다. 실제 Codex 호출은 끄며 기존 환경변수는 종료 시 복원합니다. 브라우저는 화면 없이 실행한 뒤 자동 종료합니다.
+
+결과는 `build/stage9-verification.json`, `build/stage9-java.log`, `build/stage9-node.log`, `build/reports/tests/test/index.html`과 화면 캡처로 남습니다. 실제 Codex·토스 인증과 장기간 예약 실행은 이 재현 검증에 포함되지 않습니다. 발표용 예상 수치와 검증한 범위는 [상세 안내](.docs/integration-demo.md)를 확인하세요.

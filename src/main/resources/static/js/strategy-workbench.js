@@ -614,6 +614,10 @@
     window.StrategyComparison.add(selected);
     document.getElementById('strategyComparison')?.scrollIntoView({behavior:'smooth',block:'start'});
   }));
+  if (window.StrategyPaper) selection.after(button('이 버전으로 모의매매', () => {
+    if (!selected) { notify('저장된 전략과 버전을 먼저 선택하세요.', true); return; }
+    window.StrategyPaper.select(selected);
+  }));
   async function loadStrategies(more) {
     const page = more ? strategyPage + 1 : 0;
     const entries = await api(`/api/strategies?page=${page}&size=20`);
@@ -626,7 +630,7 @@
       row.append(button(`${saved.strategy.name || '이름 없음'} · #${saved.id} · 최신 v${saved.version}`,
         () => operation('전략과 이력 불러오는 중…', async () => { await selectSaved(await api(`/api/strategies/${saved.id}`)); notify('저장된 전략을 불러왔습니다. 수정한 내용은 검증 후 새 버전으로 저장하세요.'); })),
         button(`전략 #${saved.id} 삭제`, () => {
-          if (state.busy || !window.confirm(`“${saved.strategy.name || '이름 없음'}” 전략 #${saved.id}의 모든 버전과 실행 이력, 이 전략이 포함된 비교 이력 전체를 삭제합니다. 복구할 수 없습니다. 삭제하시겠습니까?`)) return;
+          if (state.busy || !window.confirm(`“${saved.strategy.name || '이름 없음'}” 전략 #${saved.id}의 모든 버전과 백테스트 실행 이력, 이 전략이 포함된 비교 이력 전체를 삭제합니다. 종료된 모의매매 이력은 보존하며, 미종료 모의매매가 있으면 삭제할 수 없습니다. 복구할 수 없습니다. 삭제하시겠습니까?`)) return;
           operation('전략 삭제 중…', async () => {
             await api(`/api/strategies/${saved.id}`, 'DELETE');
             if (selected?.id === saved.id) {
@@ -641,7 +645,7 @@
             }
             drafts.items.forEach(item => { if (item.saved?.id === saved.id) item.saved = null; });
             await loadStrategies(false);
-            notify(`전략 #${saved.id}의 모든 버전과 실행 이력을 삭제했습니다.`);
+            notify(`전략 #${saved.id}의 모든 버전과 백테스트·비교 이력을 삭제했습니다. 종료된 모의매매 이력은 보존합니다.`);
           });
         }, 'sw-danger'));
       strategyList.append(row);

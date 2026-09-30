@@ -1,0 +1,13 @@
+{
+  "schemaVersion": 1,
+  "name": "시연 B · 거래량 1배 · 손절 20%",
+  "originalPrompt": "완성 일봉 종가 기준으로 당일 거래량이 직전 1봉 평균 거래량의 1배 이상이면 매수하고, 매수가 대비 종가가 20% 이상 하락하면 손절한다.",
+  "entry": {
+    "operator": "AND",
+    "conditions": [
+      {"type": "VOLUME", "period": 1, "multiplier": 1, "comparison": "GTE"}
+    ]
+  },
+  "exit": null,
+  "risk": {"stopLoss": {"rate": -0.20}}
+}

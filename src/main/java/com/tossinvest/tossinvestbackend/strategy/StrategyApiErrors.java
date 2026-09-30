@@ -14,9 +14,17 @@ import org.springframework.web.method.annotation.MethodArgumentTypeMismatchExcep
 import java.util.List;
 
 /** Shared error contract, scoped to user strategy APIs only. */
-@RestControllerAdvice(assignableTypes = {UserStrategyBacktestController.class, SavedStrategyController.class, BacktestAnalysisController.class, com.tossinvest.tossinvestbackend.portfolio.PortfolioController.class, com.tossinvest.tossinvestbackend.composite.CompositeController.class, com.tossinvest.tossinvestbackend.comparison.ComparisonController.class})
+@RestControllerAdvice(assignableTypes = {UserStrategyBacktestController.class, SavedStrategyController.class, BacktestAnalysisController.class, com.tossinvest.tossinvestbackend.portfolio.PortfolioController.class, com.tossinvest.tossinvestbackend.composite.CompositeController.class, com.tossinvest.tossinvestbackend.comparison.ComparisonController.class, com.tossinvest.tossinvestbackend.strategypaper.StrategyPaperController.class})
 public class StrategyApiErrors {
     public record ApiError(String code, String message, List<StrategyValidator.Issue> issues, Long timestamp) { }
+
+    @ExceptionHandler(com.tossinvest.tossinvestbackend.strategypaper.PaperConflict.class)
+    @ResponseStatus(HttpStatus.CONFLICT)
+    public ApiError paperConflict(RuntimeException exception) {return new ApiError("PAPER_CONFLICT",exception.getMessage(),List.of(),null);}
+
+    @ExceptionHandler(com.tossinvest.tossinvestbackend.strategypaper.StrategyPaperService.MarketUnavailable.class)
+    @ResponseStatus(HttpStatus.SERVICE_UNAVAILABLE)
+    public ApiError paperMarket(RuntimeException exception) {return new ApiError("MARKET_UNAVAILABLE",exception.getMessage(),List.of(),null);}
 
     @ExceptionHandler(StrategyValidationException.class)
     @ResponseStatus(HttpStatus.BAD_REQUEST)

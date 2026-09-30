@@ -59,17 +59,15 @@ public class MarketDataService {
     /**
      * 일봉 캔들 조회 - before 날짜시간 지정 (페이지네이션용).
      * before는 "YYYY-MM-DDTHH:mm:ss+09:00" 형식.
-     * queryParam 경유 시 '+' 이중 인코딩 문제가 있어 URI 문자열을 직접 조립해 호출한다.
-     * '+09:00'의 '+'를 '%2B'로 수동 대체해 정확한 URL을 구성한다.
+     * before를 URI 템플릿 값으로 전달하여 시간대의 '+'를 정확히 한 번 인코딩한다.
      */
     public CandleResponse getCandlesWithDateBefore(String symbol, String interval, int count, String beforeDatetime) {
-        // '+09:00'의 '+' → '%2B' 수동 치환 후 전체를 path 문자열에 직접 삽입
-        String encodedBefore = beforeDatetime.replace("+", "%2B");
-        String uri = "/api/v1/candles?symbol=" + symbol
-                + "&interval=" + interval
-                + "&count=" + count
-                + "&adjusted=true"
-                + "&before=" + encodedBefore;
-        return apiClient.get(uri, CandleResponse.class);
+        return apiClient.get(uriBuilder -> uriBuilder.path("/api/v1/candles")
+                .queryParam("symbol", symbol)
+                .queryParam("interval", interval)
+                .queryParam("count", count)
+                .queryParam("adjusted", true)
+                .queryParam("before", "{before}")
+                .build(beforeDatetime), CandleResponse.class);
     }
 }
