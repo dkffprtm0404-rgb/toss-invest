@@ -32,7 +32,7 @@ public class PaperPosition {
 
     /** 보유 기간 중 최고수익률 (트레일링 스탑 계산용) */
     @Builder.Default
-    @Column(nullable = false)
+    @Column(nullable = false, precision = 38, scale = 6)
     private BigDecimal peakRate = BigDecimal.ZERO;
 
     /** OPEN: 보유 중 / CLOSED: 청산 완료 */
@@ -42,6 +42,7 @@ public class PaperPosition {
 
     private LocalDate exitDate;
     private BigDecimal exitPrice;
+    @Column(precision = 38, scale = 6)
     private BigDecimal returnRate;
     private String exitReason; // STOP_LOSS / TRAILING_STOP / TIME_EXIT / DEAD_CROSS / MANUAL
 

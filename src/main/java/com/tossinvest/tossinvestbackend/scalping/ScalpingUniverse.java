@@ -12,7 +12,7 @@ public final class ScalpingUniverse {
     private ScalpingUniverse() {}
 
     public static final List<String> SYMBOLS = List.of(
-            /*"005930", // 삼성전자
+            "005930", // 삼성전자
             "000660", // SK하이닉스
             "402340", // SK스퀘어
             "005935", // 삼성전자우
@@ -21,6 +21,6 @@ public final class ScalpingUniverse {
             "373220", // LG에너지솔루션
             "032830", // 삼성생명
             "028260", // 삼성물산
-            "207940"  // 삼성바이오로직스*/
+            "207940"  // 삼성바이오로직스
     );
 }

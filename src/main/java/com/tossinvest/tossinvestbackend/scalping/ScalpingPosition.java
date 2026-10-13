@@ -8,7 +8,7 @@ import java.time.LocalDateTime;
 
 /**
  * 1분봉 단타 시뮬레이션 가상 포지션.
- * 목표가(+2% or +3%) 또는 손절(-0.6%) 또는 당일 15:20 강제청산.
+ * 익절(+2%), 손절(-0.6%), +1% 도달 후 본전 청산, 당일 15:20 강제청산.
  */
 @Entity
 @Table(name = "scalping_position")
@@ -37,11 +37,12 @@ public class ScalpingPosition {
 
     /** 보유 중 최고 수익률 (트레일링 스탑 계산용) */
     @Builder.Default
-    @Column(nullable = false)
+    @Column(nullable = false, precision = 38, scale = 6)
     private BigDecimal peakRate = BigDecimal.ZERO;
 
     private LocalDateTime exitTime;
     private BigDecimal exitPrice;
+    @Column(precision = 38, scale = 6)
     private BigDecimal returnRate;
 
     /** TAKE_PROFIT_2 / TAKE_PROFIT_3 / STOP_LOSS / FORCE_EXIT */

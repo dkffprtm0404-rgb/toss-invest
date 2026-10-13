@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>포트폴리오 대시보드</title>
-<link rel="stylesheet" href="/css/dashboard.css?v=20260923-design">
+<link rel="stylesheet" href="/css/dashboard.css?v=20261012-paper-entry-price">
 <link rel="stylesheet" href="/css/strategy-workbench.css?v=20260923-design">
 <link rel="stylesheet" href="/css/strategy-comparison.css?v=20260923-design">
 <link rel="stylesheet" href="/css/strategy-paper.css?v=20260928-1">
@@ -198,8 +198,8 @@
     <div class="paper-section" tabindex="0" role="region" aria-label="페이퍼 트레이딩 최근 거래">
       <span class="quote-block-label">최근 거래 기록</span>
       <table class="holdings-table" id="ptHistoryTable">
-        <thead><tr><th>종목</th><th>매수일</th><th>청산일</th><th class="num">수익률</th><th>청산사유</th></tr></thead>
-        <tbody id="ptHistoryBody"><tr><td colspan="5" class="loading-cell">없음</td></tr></tbody>
+        <thead><tr><th>종목</th><th>매수일</th><th class="num">매수가</th><th>청산일</th><th class="num">수익률</th><th>청산사유</th></tr></thead>
+        <tbody id="ptHistoryBody"><tr><td colspan="6" class="loading-cell">없음</td></tr></tbody>
       </table>
     </div>
 
@@ -218,11 +218,11 @@
   <section class="panel paper-panel" id="scalping-simulation" tabindex="-1">
     <div class="panel-head">
       <span class="panel-eyebrow">06 — SCALPING SIM (1분봉)</span>
-      <h2>단타 시뮬레이션 <small class="panel-subtitle">코스피 TOP10 · 목표+2/3% · 손절-0.6%</small></h2>
+      <h2>단타 시뮬레이션 <small class="panel-subtitle">고정 10종목 · 익절+2% · 손절-0.6%</small></h2>
       <button id="scalpTickBtn" class="refresh-btn">▶ 지금 스캔</button>
     </div>
     <p class="trading-note">
-      ⚡ 매 1분 자동 실행 (09:01~15:20) — 골든크로스 + 거래량 1.5배 조건
+      ⚡ 평일 매 1분 자동 평가 — 09:01~15:20 전 신규 진입, 15:20부터 청산. 확정 1분봉에서 거래량 1.2배 + EMA 추세·RSI 반등·저점 반등 중 하나를 확인합니다. +1% 도달 후 본전 청산, +2% 익절, -0.6% 손절.
     </p>
 
     <div class="paper-summary" id="scalpSummary">
@@ -259,7 +259,7 @@
 </footer>
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.js"></script>
-<script src="/js/dashboard.js?v=20260922-tabs"></script>
+<script src="/js/dashboard.js?v=20261012-paper-fixes"></script>
 <script src="/js/strategy-results.js?v=20260914-1"></script>
 <script src="/js/strategy-comparison.js?v=20260923-ux"></script>
 <script src="/js/strategy-paper.js?v=20260928-1"></script>

@@ -68,8 +68,8 @@ function formatNumber(value) {
   return num.toLocaleString('ko-KR', { maximumFractionDigits: 4 });
 }
 
-async function fetchJson(url) {
-  const res = await fetch(url);
+async function fetchJson(url, options) {
+  const res = await fetch(url, options);
   if (!res.ok) {
     throw new Error(`${res.status} ${res.statusText}`);
   }
@@ -508,7 +508,7 @@ async function loadPaperSummary() {
     const histBody = document.getElementById('ptHistoryBody');
     const hist = (s.closedPositions || []).slice(0, 20);
     if (hist.length === 0) {
-      histBody.innerHTML = '<tr><td colspan="5" class="loading-cell">거래 기록 없음</td></tr>';
+      histBody.innerHTML = '<tr><td colspan="6" class="loading-cell">거래 기록 없음</td></tr>';
     } else {
       histBody.innerHTML = hist.map(p => {
         const retPct = p.returnRate !== null && p.returnRate !== undefined
@@ -518,6 +518,7 @@ async function loadPaperSummary() {
           <tr>
             <td>${p.symbol}</td>
             <td>${p.entryDate}</td>
+            <td class="num">${formatNumber(p.entryPrice)}</td>
             <td>${p.exitDate ?? '—'}</td>
             <td class="num"><span class="rate-tag ${cls}">${retPct}</span></td>
             <td><span style="font-size:0.75rem;opacity:0.7">${exitReasonLabel(p.exitReason)}</span></td>
@@ -547,28 +548,34 @@ function exitReasonLabel(reason) {
 async function closePaperPosition(id) {
   if (!confirm(`포지션 #${id}을 수동 청산할까요?`)) return;
   try {
-    await fetch(`/api/paper/close/${id}`, { method: 'POST' });
+    await fetchJson(`/api/paper/close/${id}`, { method: 'POST' });
     await loadPaperSummary();
   } catch (err) {
     alert('청산 실패: ' + err.message);
   }
 }
 
-document.getElementById('runPaperBtn').addEventListener('click', async () => {
-  document.getElementById('runPaperBtn').textContent = '실행 중…';
+document.getElementById('runPaperBtn').addEventListener('click', async event => {
+  const button = event.currentTarget;
+  if (button.disabled) return;
+  const label = button.textContent;
+  button.disabled = true;
+  button.textContent = '실행 중…';
   try {
-    const result = await fetch('/api/paper/run', { method: 'POST' }).then(r => r.json());
+    const result = await fetchJson('/api/paper/run', { method: 'POST' });
     alert(`완료\n매수: ${result.bought?.join(', ') || '없음'}\n매도: ${result.sold?.join(', ') || '없음'}`);
     await loadPaperSummary();
   } catch (err) {
     alert('실행 실패: ' + err.message);
   } finally {
-    document.getElementById('runPaperBtn').textContent = '▶ 지금 실행';
+    button.textContent = label;
+    button.disabled = false;
   }
 });
 
 loadAll();
 loadPaperSummary();
+setInterval(loadPaperSummary, 60 * 1000);
 
 // ── 1분봉 단타 시뮬레이션 ──────────────────────────────────────────────────
 async function loadScalpingStats() {
@@ -616,10 +623,14 @@ async function loadScalpingStats() {
   }
 }
 
-document.getElementById('scalpTickBtn').addEventListener('click', async () => {
-  document.getElementById('scalpTickBtn').textContent = '스캔 중…';
+document.getElementById('scalpTickBtn').addEventListener('click', async event => {
+  const button = event.currentTarget;
+  if (button.disabled) return;
+  const label = button.textContent;
+  button.disabled = true;
+  button.textContent = '스캔 중…';
   try {
-    const r = await fetch('/api/scalping/tick', { method: 'POST' }).then(res => res.json());
+    const r = await fetchJson('/api/scalping/tick', { method: 'POST' });
     if (r.bought?.length || r.sold?.length) {
       alert(`스캘핑 결과\n매수: ${r.bought?.join(', ') || '없음'}\n매도: ${r.sold?.join(', ') || '없음'}`);
     }
@@ -627,7 +638,8 @@ document.getElementById('scalpTickBtn').addEventListener('click', async () => {
   } catch(err) {
     alert('스캔 실패: ' + err.message);
   } finally {
-    document.getElementById('scalpTickBtn').textContent = '▶ 지금 스캔';
+    button.textContent = label;
+    button.disabled = false;
   }
 });
 

@@ -508,6 +508,11 @@ h1, h2 {
   font-variant-numeric: tabular-nums;
 }
 
+#ptHistoryTable td {
+  padding-left: 8px;
+  padding-right: 8px;
+}
+
 .holdings-table tr:last-child td {
   border-bottom: none;
 }

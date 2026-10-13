@@ -261,11 +261,7 @@ public class PaperTradingService {
 
     private boolean isStrategyOn() {
         List<PaperPosition> closed = repo.findClosedOrderByExitDateDesc();
-        if (closed.size() >= 20) {
-            long wins = closed.subList(0, 20).stream()
-                    .filter(p -> p.getReturnRate() != null && p.getReturnRate().signum() > 0).count();
-            if ((double) wins / 20 < 0.35) { log.warn("[페이퍼] ON/OFF OFF: 승률 부족"); return false; }
-        }
+        // 승률은 통계로만 사용한다. 페이퍼 매매를 막아 승률 회복 자체가 불가능해지는 것을 방지한다.
         LocalDate cutoff = LocalDate.now().minusDays(10);
         double cum = closed.stream()
                 .filter(p -> p.getExitDate() != null && p.getExitDate().isAfter(cutoff))
