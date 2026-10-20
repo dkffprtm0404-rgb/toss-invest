@@ -14,6 +14,37 @@ class StrategyPaperEngineTests {
     final StrategyPaperEngine engine=new StrategyPaperEngine(new StrategyEvaluator());
     final StrategyJson json=new StrategyJson(new ObjectMapper().findAndRegisterModules());
     final LocalDate start=LocalDate.of(2025,1,2);
+
+    @Test void trendTemplateMatchesBacktestAndCheckpointDoesNotDuplicateEntry() throws Exception {
+        StrategyDefinition definition;
+        try (var input = getClass().getResourceAsStream("/demo/strategy-trend-template.json")) {
+            definition = json.read(new String(input.readAllBytes(), java.nio.charset.StandardCharsets.UTF_8), StrategyDefinition.class);
+        }
+        var input = new ArrayList<StrategyBar>();
+        for (int i = 0; i <= 366; i++) {
+            var p = BigDecimal.valueOf(100 + i);
+            input.add(new StrategyBar(LocalDate.of(2025, 1, 1).plusDays(i).atStartOfDay(UserStrategyBacktestEngine.MARKET_ZONE)
+                    .toInstant().toEpochMilli(), p, p, BigDecimal.TEN, p, p));
+        }
+        var candles = input.stream().map(b -> new CandleEntity("005930", b.timestamp(), b.open(), b.high(), b.low(), b.close(), b.volume())).toList();
+        var observedAt = Instant.parse("2026-01-04T00:00:00Z");
+        for (var mode : UserStrategyBacktestRequest.ExecutionMode.values()) {
+            var r = request(mode);
+            r.validateStrategy(definition);
+            var s = new PaperState(r.initialCapital(), LocalDate.of(2025, 12, 31));
+            engine.process(definition, r, s, input.subList(0, 364), observedAt);
+            assertThat(s.trades).isEmpty();
+            engine.process(definition, r, s, input.subList(363, input.size()), observedAt);
+            var backtest = new UserStrategyBacktestEngine(new StrategyEvaluator()).run(new UserStrategyBacktestRequest(
+                    definition, "005930", LocalDate.of(2025, 12, 31), LocalDate.of(2026, 1, 2), mode), candles);
+            assertThat(s.trades).hasSize(1);
+            assertThat(s.trades.get(0).evidence()).hasSize(6).isEqualTo(backtest.openPosition().entry().evidence());
+            assertThat(s.trades.get(0).executionDate()).isEqualTo(UserStrategyBacktestEngine.date(backtest.openPosition().entry().executionBarTimestamp()));
+            var restored = json.stored(json.write(s), PaperState.class);
+            engine.process(definition, r, restored, input, observedAt);
+            assertThat(restored.trades).isEqualTo(s.trades);
+        }
+    }
     StrategyDefinition strategy() throws Exception {return json.read(StrategyPaperApiTests.STRATEGY,StrategyDefinition.class);}
     PaperDefinition request(UserStrategyBacktestRequest.ExecutionMode mode) {
         return new PaperDefinition(1L,1,"005930",mode,new BigDecimal("1000"),BigDecimal.ONE,

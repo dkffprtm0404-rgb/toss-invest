@@ -124,6 +124,17 @@ public class StrategyValidator {
                 required(ma.averageType(), p + ".averageType", issues);
                 period(ma.period(), p + ".period", issues);
                 required(ma.comparison(), p + ".comparison", issues);
+            } else if (condition instanceof MovingAverageTrend ma) {
+                required(ma.averageType(), p + ".averageType", issues);
+                period(ma.period(), p + ".period", issues);
+                bounded(ma.lookbackMonths(), 1, 60, p + ".lookbackMonths", issues);
+                required(ma.direction(), p + ".direction", issues);
+            } else if (condition instanceof RangeRatio range) {
+                period(range.period(), p + ".period", issues);
+                required(range.periodUnit(), p + ".periodUnit", issues);
+                required(range.priceField(), p + ".priceField", issues);
+                positive(range.multiplier(), p + ".multiplier", issues);
+                required(range.comparison(), p + ".comparison", issues);
             } else if (condition instanceof AtrBreakout atr) {
                 required(atr.method(), p + ".method", issues);
                 period(atr.period(), p + ".period", issues);
@@ -168,7 +179,8 @@ public class StrategyValidator {
         for (ConditionGroup group : new ConditionGroup[]{strategy.entry(), strategy.exit()}) {
             if (group == null || group.conditions() == null) continue;
             for (Condition c : group.conditions()) {
-                if (c instanceof RangeBreakout || c instanceof MovingAverageCompare || c instanceof PriceMovingAverage || c instanceof AtrBreakout)
+                if (c instanceof RangeBreakout || c instanceof MovingAverageCompare || c instanceof PriceMovingAverage
+                        || c instanceof MovingAverageTrend || c instanceof RangeRatio || c instanceof AtrBreakout)
                     return true;
                 if (c instanceof Rsi rsi && (rsi.comparison() == Comparison.GT || rsi.comparison() == Comparison.LT)) return true;
             }

@@ -46,6 +46,41 @@ class StrategyPersistenceApiTests {
     @BeforeEach
     void seed() { candles.saveAllAndFlush(UserStrategyBacktestEngineTests.candles(100, 100, 94, 93)); }
 
+    @Test void trendTemplateKeepsAllSixRulesAndEvidenceInSavedVersionAndRun() throws Exception {
+        String definition;
+        try (var input = getClass().getResourceAsStream("/demo/strategy-trend-template.json")) {
+            definition = new String(input.readAllBytes(), java.nio.charset.StandardCharsets.UTF_8);
+        }
+        var data = new java.util.ArrayList<CandleEntity>();
+        for (int i = 0; i <= 366; i++) {
+            var price = BigDecimal.valueOf(100 + i);
+            long timestamp = java.time.LocalDate.of(2025, 1, 1).plusDays(i)
+                    .atStartOfDay(UserStrategyBacktestEngine.MARKET_ZONE).toInstant().toEpochMilli();
+            data.add(new CandleEntity("000660", timestamp, price, price, price, price, BigDecimal.TEN));
+        }
+        candles.saveAllAndFlush(data);
+        var saved = mapper.readTree(mvc.perform(post("/api/strategies").contentType(MediaType.APPLICATION_JSON).content(definition))
+                .andExpect(status().isCreated()).andReturn().getResponse().getContentAsString());
+        long id = saved.path("id").asLong();
+        JsonNode first = run(id, EXECUTION.replace("005930", "000660").replace("2025-01-02", "2025-12-31").replace("2025-01-04", "2026-01-02"));
+        var rules = first.at("/snapshot/strategy/strategy/entry/conditions");
+        assertThat(rules.size()).isEqualTo(6);
+        assertThat(rules.get(3).path("lookbackMonths").asInt()).isEqualTo(1);
+        assertThat(rules.get(4).path("multiplier").decimalValue()).isEqualByComparingTo("0.75");
+        assertThat(rules.get(5).path("multiplier").decimalValue()).isEqualByComparingTo("1.30");
+        var evidence = first.at("/snapshot/result/openPosition/entry/evidence");
+        assertThat(evidence.size()).isEqualTo(6);
+        assertThat(evidence.get(3).path("type").asText()).isEqualTo("MA_TREND");
+        assertThat(evidence.get(4).path("referenceValue").decimalValue()).isEqualByComparingTo("347.25");
+        mvc.perform(put("/api/strategies/" + id).contentType(MediaType.APPLICATION_JSON)
+                .content("{\"expectedVersion\":1,\"strategy\":" + definition.replace("\"lookbackMonths\": 1", "\"lookbackMonths\": 2") + "}"))
+                .andExpect(status().isOk());
+        data.get(364).setHighPrice(BigDecimal.valueOf(999));
+        candles.saveAllAndFlush(data);
+        assertThat(read("/api/backtest/runs/" + first.path("id").asLong()).path("snapshot")).isEqualTo(first.path("snapshot"));
+        assertThat(read("/api/strategies/" + id + "/versions/1").at("/strategy/entry/conditions/3/lookbackMonths").asInt()).isEqualTo(1);
+    }
+
     @Test void expandedRulesAndOhlcEvidenceSurviveVersionAndCandleChanges() throws Exception {
         var data = UserStrategyBacktestEngineTests.candles(100, 105, 130, 104);
         data.forEach(c -> { c.setHighPrice(c.getClosePrice()); c.setLowPrice(c.getClosePrice()); });

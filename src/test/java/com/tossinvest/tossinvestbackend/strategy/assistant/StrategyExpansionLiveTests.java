@@ -14,6 +14,54 @@ import static org.assertj.core.api.Assertions.*;
 /** Opt-in verification using the existing ChatGPT-login client; no API key fallback. */
 @EnabledIfEnvironmentVariable(named = "RUN_STRATEGY_EXPANSION_LIVE", matches = "true")
 class StrategyExpansionLiveTests {
+    @Test void clarifiedTrendTemplateProducesAllSixAndConditions() throws Exception {
+        var mapper = new ObjectMapper();
+        var client = new CodexClient(new CodexProcessFactory(System.getenv().getOrDefault("STRATEGY_CODEX_EXECUTABLE", "codex")),
+                mapper, "gpt-5.6-terra", 120000);
+        var service = new StrategyAssistantService(client, new StrategyJson(mapper), new StrategyValidator());
+        var result = service.interpret(new StrategyAssistantService.Request("""
+                현재가 > SMA50&#x20;
+                1. &#x20;SMA50 > SMA150&#x20;
+                2. &#x20;SMA150 > SMA200&#x20;
+                3. &#x20;SMA200 상승 중&#x20;
+                4. &#x20;현재가가 52주 최고가의 25% 이내&#x20;
+                5. &#x20;현재가가 52주 최저가 대비 30% 이상
+                """, "모두 충족하면 진입하는 AND 조건. SMA200 상승 기간은 달력상 1달: 현재 SMA200이 한 달 전보다 높다. 휴장일은 그 이전 최근 거래일. 일봉 종가 기준, 52주 고가·저가는 당일 제외. 별도 청산과 위험관리 조건 없음."));
+        Files.writeString(Path.of("build/strategy-trend-live.json"), mapper.writerWithDefaultPrettyPrinter().writeValueAsString(result));
+        assertThat(result.ready()).as("questions=%s, unsupported=%s, issues=%s", result.questions(), result.unsupported(), result.issues()).isTrue();
+        assertThat(result.strategy().entry().operator()).isEqualTo(StrategyDefinition.Operator.AND);
+        assertThat(result.strategy().entry().conditions()).hasSize(6);
+        assertThat(result.strategy().entry().conditions()).contains(
+                new StrategyDefinition.PriceMovingAverage(StrategyDefinition.AverageType.SMA, 50, StrategyDefinition.Comparison.GT),
+                new StrategyDefinition.MovingAverageCompare(StrategyDefinition.AverageType.SMA, 50, 150, StrategyDefinition.Comparison.GT),
+                new StrategyDefinition.MovingAverageCompare(StrategyDefinition.AverageType.SMA, 150, 200, StrategyDefinition.Comparison.GT),
+                new StrategyDefinition.MovingAverageTrend(StrategyDefinition.AverageType.SMA, 200, 1, StrategyDefinition.Direction.UP));
+        assertThat(result.strategy().entry().conditions()).anyMatch(c -> c instanceof StrategyDefinition.RangeRatio r
+                && r.period() == 52 && r.periodUnit() == StrategyDefinition.PeriodUnit.CALENDAR_WEEKS && r.priceField() == StrategyDefinition.PriceField.HIGH
+                && r.multiplier().compareTo(new java.math.BigDecimal("0.75")) == 0 && r.comparison() == StrategyDefinition.Comparison.GTE);
+        assertThat(result.strategy().entry().conditions()).anyMatch(c -> c instanceof StrategyDefinition.RangeRatio r
+                && r.period() == 52 && r.periodUnit() == StrategyDefinition.PeriodUnit.CALENDAR_WEEKS && r.priceField() == StrategyDefinition.PriceField.LOW
+                && r.multiplier().compareTo(new java.math.BigDecimal("1.30")) == 0 && r.comparison() == StrategyDefinition.Comparison.GTE);
+        var batchService = new StrategyBatchService(client, new StrategyJson(mapper), service);
+        String explicitPrompt;
+        try (var input = getClass().getResourceAsStream("/demo/strategy-trend-template.json")) {
+            explicitPrompt = mapper.readTree(input).path("originalPrompt").asText();
+        }
+        var batch = batchService.interpret(new StrategyBatchService.Request(explicitPrompt));
+        Files.writeString(Path.of("build/strategy-trend-batch-live.json"), mapper.writerWithDefaultPrettyPrinter().writeValueAsString(batch));
+        assertThat(batch.items()).hasSize(1);
+        var draft = batch.items().get(0).draft();
+        assertThat(draft.ready()).as("batch questions=%s, unsupported=%s, issues=%s", draft.questions(), draft.unsupported(), draft.issues()).isTrue();
+        assertThat(draft.strategy().entry().operator()).isEqualTo(StrategyDefinition.Operator.AND);
+        assertThat(draft.strategy().entry().conditions()).usingRecursiveComparison().ignoringCollectionOrder()
+                .withComparatorForType(java.math.BigDecimal::compareTo, java.math.BigDecimal.class).isEqualTo(result.strategy().entry().conditions());
+        var missing = service.interpret(new StrategyAssistantService.Request("일봉 종가 기준. 현재가>SMA50 AND SMA50>SMA150 AND SMA150>SMA200 AND SMA200 상승 중. 별도 청산과 위험관리 없음.", null));
+        Files.writeString(Path.of("build/strategy-trend-missing-live.json"), mapper.writerWithDefaultPrettyPrinter().writeValueAsString(missing));
+        assertThat(missing.ready()).isFalse();
+        assertThat(missing.unsupported()).isEmpty();
+        assertThat(missing.questions()).isNotEmpty();
+        assertThat(missing.strategy().entry().conditions()).hasSize(4).anyMatch(c -> c instanceof StrategyDefinition.MovingAverageTrend ma && ma.lookbackMonths() == null);
+    }
     @Test void explicitDomesticStrategiesProduceExecutableExpandedRules() throws Exception {
         var mapper = new ObjectMapper();
         var client = new CodexClient(new CodexProcessFactory(System.getenv().getOrDefault("STRATEGY_CODEX_EXECUTABLE", "codex")),

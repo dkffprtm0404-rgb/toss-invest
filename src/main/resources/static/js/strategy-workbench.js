@@ -62,7 +62,7 @@
         this.draft.composition.exitConfirmed = false;
       }
       if (this.draft?.portfolio) this.draft.schemaVersion = 3;
-      const extended = ['RANGE_BREAKOUT', 'MA_COMPARE', 'PRICE_MA', 'ATR_BREAKOUT'];
+      const extended = ['RANGE_BREAKOUT', 'MA_COMPARE', 'PRICE_MA', 'MA_TREND', 'RANGE_RATIO', 'ATR_BREAKOUT'];
       const conditions = [...(this.draft?.entry?.conditions || []), ...(this.draft?.exit?.conditions || [])];
       if (this.draft?.schemaVersion === 1 && (conditions.some(c => extended.includes(c?.type) || ['GT', 'LT'].includes(c?.comparison))
           || this.draft.risk?.trailingStop || this.draft.risk?.atrStop)) this.draft.schemaVersion = 2;
@@ -367,7 +367,8 @@
   const atrMethods = [['SIMPLE', '단순 평균'], ['WILDER', 'Wilder 평활 평균']];
   const peakBases = [['CLOSE', '진입 후 최고 종가'], ['HIGH', '진입 후 일중 최고가']];
   const types = [['MA_CROSS', '이동평균 교차'], ['RSI', 'RSI'], ['VOLUME', '거래량'],
-    ['RANGE_BREAKOUT', '기간 고가·저가 돌파'], ['MA_COMPARE', '이동평균 위치 비교'], ['PRICE_MA', '종가와 이동평균 비교'], ['ATR_BREAKOUT', 'ATR 변동성 돌파']];
+    ['RANGE_BREAKOUT', '기간 고가·저가 돌파'], ['MA_COMPARE', '이동평균 위치 비교'], ['PRICE_MA', '종가와 이동평균 비교'],
+    ['MA_TREND', '이동평균 기간 추세'], ['RANGE_RATIO', '기간 고가·저가 대비 비율'], ['ATR_BREAKOUT', 'ATR 변동성 돌파']];
   function number(value) { return value.trim() === '' || !Number.isFinite(Number(value)) ? null : Number(value); }
   function editField(parent, label, obj, key, choices, percent = false) {
     field(parent, label, percent ? rateToPercent(obj[key]) : obj[key], value => {
@@ -387,15 +388,24 @@
     } else if (condition?.type === 'VOLUME') {
       editField(row, '평균 거래량 기간 (봉)', condition, 'period'); editField(row, '거래량 배수', condition, 'multiplier');
       editField(row, '비교 방식', condition, 'comparison', comparisons.slice(0,2));
-    } else if (condition?.type === 'RANGE_BREAKOUT') {
-      editField(row, '돌파 구간 길이', condition, 'period');
-      editField(row, '돌파 구간 단위', condition, 'periodUnit', [['BARS','거래봉'],['CALENDAR_WEEKS','달력상 주']]);
+    } else if (condition?.type === 'RANGE_BREAKOUT' || condition?.type === 'RANGE_RATIO') {
+      const ratio = condition.type === 'RANGE_RATIO';
+      editField(row, ratio ? '비율 구간 길이' : '돌파 구간 길이', condition, 'period');
+      editField(row, ratio ? '비율 구간 단위' : '돌파 구간 단위', condition, 'periodUnit', [['BARS','거래봉'],['CALENDAR_WEEKS','달력상 주']]);
       editField(row, '구간 가격 기준', condition, 'priceField', [['HIGH','최고 고가'],['LOW','최저 저가']]);
+      if (ratio) editField(row, '구간 가격 대비 비율 (%)', condition, 'multiplier', null, true);
       editField(row, '비교 방식', condition, 'comparison', extendedComparisons);
       row.append(node('p','종가를 당일 제외 과거 구간과 비교합니다. 52주: 길이 52 / 달력상 주 / 최고 고가.','sw-muted'));
+      if (ratio) row.append(node('p','최고가의 25% 이내: 최고 고가 × 75% 이상. 최저가보다 30% 이상: 최저 저가 × 130% 이상.','sw-muted'));
     } else if (condition?.type === 'PRICE_MA') {
       editField(row, '이동평균 종류', condition, 'averageType', averages);
       editField(row, '이동평균 기간 (봉)', condition, 'period'); editField(row, '비교 방식', condition, 'comparison', extendedComparisons);
+    } else if (condition?.type === 'MA_TREND') {
+      editField(row, '이동평균 종류', condition, 'averageType', averages);
+      editField(row, '이동평균 기간 (봉)', condition, 'period');
+      editField(row, '추세 비교 기간 (달력 개월)', condition, 'lookbackMonths');
+      editField(row, '추세 방향', condition, 'direction', [['UP','상승 (현재 > 과거)'],['DOWN','하락 (현재 < 과거)']]);
+      row.append(node('p','현재 이동평균을 지정한 개월 전 값과 비교합니다. 휴장일이면 그 이전 최근 거래일을 사용하며, 매일 연속 상승·하락을 요구하지 않습니다.','sw-muted'));
     } else if (condition?.type === 'ATR_BREAKOUT') {
       editField(row, 'ATR 돌파 계산 방식', condition, 'method', atrMethods);
       editField(row, 'ATR 돌파 기간 (봉)', condition, 'period'); editField(row, 'ATR 돌파 배수', condition, 'multiplier');
@@ -765,6 +775,8 @@
     if (condition.type === 'RANGE_BREAKOUT') return `종가 ${comparison} 직전 ${condition.period ?? '?'}${condition.periodUnit === 'CALENDAR_WEEKS' ? '주' : condition.periodUnit === 'BARS' ? '봉' : '(단위 미입력)'} ${condition.priceField === 'HIGH' ? '최고 고가' : condition.priceField === 'LOW' ? '최저 저가' : '가격 미입력'} (당일 제외)`;
     if (condition.type === 'MA_COMPARE') return `${condition.averageType || '?'} ${condition.shortPeriod ?? '?'}봉 ${comparison} ${condition.longPeriod ?? '?'}봉`;
     if (condition.type === 'PRICE_MA') return `종가 ${comparison} ${condition.averageType || '?'} ${condition.period ?? '?'}봉`;
+    if (condition.type === 'MA_TREND') return `${condition.averageType || '?'} ${condition.period ?? '?'}봉 현재 값 ${condition.direction === 'UP' ? '>' : condition.direction === 'DOWN' ? '<' : '(방향 미입력)'} 달력상 ${condition.lookbackMonths ?? '?'}개월 전 값 (휴장일은 이전 최근 거래일)`;
+    if (condition.type === 'RANGE_RATIO') return `종가 ${comparison} 직전 ${condition.period ?? '?'}${condition.periodUnit === 'CALENDAR_WEEKS' ? '주' : condition.periodUnit === 'BARS' ? '봉' : '(단위 미입력)'} ${condition.priceField === 'HIGH' ? '최고 고가' : condition.priceField === 'LOW' ? '최저 저가' : '가격 미입력'} × ${condition.multiplier == null ? '?' : rateToPercent(condition.multiplier)}% (당일 제외)`;
     if (condition.type === 'ATR_BREAKOUT') return `종가 ${comparison} 전일 종가 + ${condition.multiplier ?? '?'} × 전일 ATR(${condition.period ?? '?'}, ${condition.method || '?'})`;
     return condition.type || '종류 미입력';
   }

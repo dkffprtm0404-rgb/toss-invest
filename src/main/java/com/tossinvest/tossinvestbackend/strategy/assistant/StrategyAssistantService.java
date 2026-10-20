@@ -23,12 +23,26 @@ public class StrategyAssistantService {
             신고가 경신은 GT, 저가 미만은 LT. '상향/하향 교차'는 CROSS_ABOVE/CROSS_BELOW로 전일 비교도 필요하다. 상태 비교와 교차 이벤트를 구분한다.
             MA_COMPARE는 동일 averageType(SMA/EMA)의 shortPeriod와 longPeriod를 comparison으로 비교하는 상태 조건이다. 예: SMA20 > SMA200.
             PRICE_MA는 종가와 averageType(SMA/EMA), period의 평균을 comparison으로 비교한다. 예: 종가 > SMA200.
+            MA_TREND는 현재 이동평균과 달력상 lookbackMonths개월 전 이동평균의 상태 비교다. averageType(SMA/EMA), period, lookbackMonths(1~60), direction(UP/DOWN)이 필수다.
+            UP은 현재 값 > 과거 값, DOWN은 현재 값 < 과거 값이다. 과거 기준일이 휴장일이면 그 이전 최근 거래일의 평균을 사용한다. 월말은 실제 달력의 월말 날짜로 맞춘다.
+            'SMA200이 최근 1달 동안 상승 중'은 MA_TREND, SMA, period=200, lookbackMonths=1, UP이다. 매일 연속 상승 조건이 아니다. 1달을 20봉이나 30일로 바꾸지 않는다.
+            단순 'SMA200 상승 중'은 지원 가능한 MA_TREND로 남기되 lookbackMonths=null과 비교할 달력 개월 수 질문을 반환한다. '몇 주~몇 달' 역시 개월 수를 질문한다. 미지원으로 분류하거나 임의의 기간을 넣지 않는다.
+            매일 연속 상승이나 회귀 기울기는 MA_TREND의 시작·끝 값 비교로 대체하지 않는다. 이 조건은 아직 미지원이다.
+            RANGE_RATIO는 종가와 당일 제외 과거 구간 HIGH/LOW × multiplier를 비교한다. period, periodUnit(BARS/CALENDAR_WEEKS), priceField(HIGH/LOW), 양수 multiplier, comparison이 필수다.
+            '52주 최고가의 25% 이내'는 period=52, CALENDAR_WEEKS, HIGH, multiplier=0.75, GTE이다. 종가가 최고가의 75% 이상이라는 뜻이다.
+            '52주 최저가 대비 30% 이상' 또는 '52주 최저가보다 30% 이상 높다'는 period=52, CALENDAR_WEEKS, LOW, multiplier=1.30, GTE이다. '최저가의 30%'와 구분한다.
+            명시된 비율은 그대로 계산한다. 25%/30%를 모든 비율 조건의 기본값으로 넣지 않는다. MA_TREND와 RANGE_RATIO를 미지원으로 분류하지 않는다.
+            일봉 전략의 '현재가 > SMA50' 같은 상태 필터는 종가 > SMA50으로 구조화하고, 장중 실시간 가격을 명시한 경우에만 일봉으로 대체하지 않는다.
             새 가격/이동평균/ATR 조건 comparison은 GT/LT/GTE/LTE/CROSS_ABOVE/CROSS_BELOW를 지원한다.
             ATR_BREAKOUT은 종가와 전일 종가 + multiplier × 전일 ATR(period)를 비교한다. method(SIMPLE/WILDER), period, multiplier, comparison이 필수다.
             ATR 계산 방식이 누락되면 질문하며 임의로 SIMPLE/WILDER를 고르지 않는다. 전일 ATR 사용과 종가 확인 방식을 사용자 입력/보완에서 확인한다.
             RSI는 SIMPLE만 지원하며 method, period, threshold, comparison(GTE/LTE/CROSS_ABOVE/CROSS_BELOW)이 필요하다.
             거래량은 현재 봉을 제외한 직전 period 봉 평균 대비 multiplier 배수, GTE/LTE만 지원한다.
             entry와 exit는 평면 조건 그룹이다. 복수 조건은 명시된 AND 또는 OR가 필요하다. 중첩 그룹은 지원하지 않는다.
+            '모두 충족', '동시에', 'AND 조건'은 AND, '하나 이상', 'OR 조건'은 OR다. 보완 입력에서 이를 지정하면 다시 연산자를 질문하지 않는다.
+            연산자가 빠져도 지원 가능한 진입 조건은 entry.conditions에 보존하고 entry.operator=null로 두어 질문한다. entry 전체를 null로 버리지 않는다.
+            번호가 붙은 진입 필터 목록은 한 전략의 조건들이다. 예: 현재가>SMA50, SMA50>SMA150, SMA150>SMA200, SMA200 추세, 52주 가격 조건. 번호만 보고 독립 전략 여러 개로 분리하지 않는다.
+            입력에 문자 그대로 포함된 &#x20;, &#32;, &nbsp;는 공백 의미로 읽는다. 원문을 저장하거나 sourceText를 반환할 때는 원래 문자를 유지한다.
             청산 조건이 없으면 exit=null. risk에는 명시한 정책만 넣는다. 생략 정책은 null, 자동 청산을 추가하지 않는다.
             손절 5%는 stopLoss.rate=-0.05, 익절 10%는 takeProfit.rate=0.10이다.
             timeExit.days는 매수 봉을 0으로 세어 days를 초과한 첫 저장 거래봉에 청산한다.

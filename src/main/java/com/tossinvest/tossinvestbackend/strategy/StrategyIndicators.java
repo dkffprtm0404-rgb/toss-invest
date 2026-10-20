@@ -18,26 +18,43 @@ final class StrategyIndicators {
     private StrategyIndicators() { }
 
     static List<BigDecimal> range(List<StrategyBar> bars, RangeBreakout rule) {
+        return range(bars, rule.period(), rule.periodUnit(), rule.priceField());
+    }
+
+    static List<BigDecimal> range(List<StrategyBar> bars, int period, PeriodUnit periodUnit, PriceField priceField) {
         List<BigDecimal> result = new ArrayList<>(Collections.nCopies(bars.size(), null));
         int windowStart = 0;
         for (int i = 0; i < bars.size(); i++) {
             int from;
-            if (rule.periodUnit() == PeriodUnit.BARS) {
-                if (i < rule.period()) continue;
-                from = i - rule.period();
+            if (periodUnit == PeriodUnit.BARS) {
+                if (i < period) continue;
+                from = i - period;
             } else {
-                LocalDate cutoff = date(bars.get(i)).minusWeeks(rule.period());
+                LocalDate cutoff = date(bars.get(i)).minusWeeks(period);
                 if (date(bars.get(0)).isAfter(cutoff)) continue;
                 while (windowStart < i && date(bars.get(windowStart)).isBefore(cutoff)) windowStart++;
                 from = windowStart;
             }
             BigDecimal extreme = null;
             for (int j = from; j < i; j++) {
-                BigDecimal value = rule.priceField() == PriceField.HIGH ? bars.get(j).high() : bars.get(j).low();
+                BigDecimal value = priceField == PriceField.HIGH ? bars.get(j).high() : bars.get(j).low();
                 if (value == null) throw new IllegalArgumentException("고가·저가 데이터가 필요합니다.");
-                extreme = extreme == null ? value : rule.priceField() == PriceField.HIGH ? extreme.max(value) : extreme.min(value);
+                extreme = extreme == null ? value : priceField == PriceField.HIGH ? extreme.max(value) : extreme.min(value);
             }
             result.set(i, extreme);
+        }
+        return result;
+    }
+
+    /** Endpoint trend: compare with the last stored trading bar on or before the KST calendar cutoff. */
+    static List<BigDecimal> monthsAgo(List<StrategyBar> bars, List<BigDecimal> values, int months) {
+        List<BigDecimal> result = new ArrayList<>(Collections.nCopies(bars.size(), null));
+        int reference = -1;
+        for (int i = 0; i < bars.size(); i++) {
+            LocalDate cutoff = date(bars.get(i)).minusMonths(months);
+            while (reference + 1 < i && !date(bars.get(reference + 1)).isAfter(cutoff)) reference++;
+            // A missing or unready historical average is not replaced with a newer value.
+            if (reference >= 0) result.set(i, values.get(reference));
         }
         return result;
     }

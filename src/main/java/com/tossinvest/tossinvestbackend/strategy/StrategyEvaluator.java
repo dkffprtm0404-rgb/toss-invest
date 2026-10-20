@@ -184,6 +184,17 @@ public class StrategyEvaluator {
                 } else if (condition instanceof PriceMovingAverage ma) {
                     series = new Series(closes, average(closes, ma.period(), ma.averageType()), ma.comparison());
                     warmup = ma.period() - 1 + (isCross(ma.comparison()) ? 1 : 0);
+                } else if (condition instanceof MovingAverageTrend ma) {
+                    List<BigDecimal> values = average(closes, ma.period(), ma.averageType());
+                    List<BigDecimal> references = StrategyIndicators.monthsAgo(bars, values, ma.lookbackMonths());
+                    series = new Series(values, references, ma.direction() == Direction.UP ? Comparison.GT : Comparison.LT);
+                    warmup = firstAvailable(references);
+                } else if (condition instanceof RangeRatio range) {
+                    List<BigDecimal> references = StrategyIndicators.range(bars, range.period(), range.periodUnit(), range.priceField())
+                            .stream().map(value -> value == null ? null : value.multiply(range.multiplier())).toList();
+                    series = new Series(closes, references, range.comparison());
+                    warmup = range.periodUnit() == PeriodUnit.BARS ? range.period() : firstAvailable(references);
+                    if (isCross(range.comparison())) warmup++;
                 } else if (condition instanceof AtrBreakout atr) {
                     series = new Series(closes, StrategyIndicators.atrThreshold(bars, atr), atr.comparison());
                     warmup = atr.period() + 1 + (isCross(atr.comparison()) ? 1 : 0);
@@ -218,7 +229,8 @@ public class StrategyEvaluator {
                 boolean passes = compare(series.comparison(), actual, reference, previousActual, previousReference);
                 String type = condition instanceof MovingAverageCross ? "MA_CROSS" : condition instanceof Rsi ? "RSI"
                         : condition instanceof Volume ? "VOLUME" : condition instanceof RangeBreakout ? "RANGE_BREAKOUT"
-                        : condition instanceof MovingAverageCompare ? "MA_COMPARE" : condition instanceof PriceMovingAverage ? "PRICE_MA" : "ATR_BREAKOUT";
+                        : condition instanceof MovingAverageCompare ? "MA_COMPARE" : condition instanceof PriceMovingAverage ? "PRICE_MA"
+                        : condition instanceof MovingAverageTrend ? "MA_TREND" : condition instanceof RangeRatio ? "RANGE_RATIO" : "ATR_BREAKOUT";
                 evidence.add(new Evidence(path + ".conditions[" + i + "]", type, actual, reference,
                         previousActual, previousReference, passes));
                 matched = group.operator() == Operator.OR ? matched || passes : matched && passes;

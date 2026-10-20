@@ -52,10 +52,12 @@ public record StrategyDefinition(Integer schemaVersion, String name, String orig
             @JsonSubTypes.Type(value = RangeBreakout.class, name = "RANGE_BREAKOUT"),
             @JsonSubTypes.Type(value = MovingAverageCompare.class, name = "MA_COMPARE"),
             @JsonSubTypes.Type(value = PriceMovingAverage.class, name = "PRICE_MA"),
+            @JsonSubTypes.Type(value = MovingAverageTrend.class, name = "MA_TREND"),
+            @JsonSubTypes.Type(value = RangeRatio.class, name = "RANGE_RATIO"),
             @JsonSubTypes.Type(value = AtrBreakout.class, name = "ATR_BREAKOUT")
     })
     public sealed interface Condition permits MovingAverageCross, Rsi, Volume, RangeBreakout,
-            MovingAverageCompare, PriceMovingAverage, AtrBreakout { }
+            MovingAverageCompare, PriceMovingAverage, MovingAverageTrend, RangeRatio, AtrBreakout { }
 
     public record MovingAverageCross(AverageType averageType, Integer shortPeriod, Integer longPeriod,
                                      Direction direction) implements Condition { }
@@ -67,6 +69,10 @@ public record StrategyDefinition(Integer schemaVersion, String name, String orig
     public record MovingAverageCompare(AverageType averageType, Integer shortPeriod, Integer longPeriod,
                                        Comparison comparison) implements Condition { }
     public record PriceMovingAverage(AverageType averageType, Integer period, Comparison comparison) implements Condition { }
+    public record MovingAverageTrend(AverageType averageType, Integer period, Integer lookbackMonths,
+                                      Direction direction) implements Condition { }
+    public record RangeRatio(Integer period, PeriodUnit periodUnit, PriceField priceField,
+                             BigDecimal multiplier, Comparison comparison) implements Condition { }
     public record AtrBreakout(AtrMethod method, Integer period, BigDecimal multiplier, Comparison comparison) implements Condition { }
 
     public record Risk(StopLoss stopLoss, TakeProfit takeProfit, TimeExit timeExit, TrailingPolicy trailing,

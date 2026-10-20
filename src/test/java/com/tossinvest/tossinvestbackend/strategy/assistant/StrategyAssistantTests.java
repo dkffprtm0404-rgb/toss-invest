@@ -8,6 +8,23 @@ import static org.assertj.core.api.Assertions.*;
 import static org.mockito.Mockito.*;
 
 class StrategyAssistantTests {
+    @Test void trendTemplateInterpretationKeepsAndClarificationAndRequiresExplicitMissingMonth() throws Exception {
+        String strategy;
+        try (var input = getClass().getResourceAsStream("/demo/strategy-trend-template.json")) {
+            strategy = new String(input.readAllBytes(), java.nio.charset.StandardCharsets.UTF_8);
+        }
+        String output = "{\"strategy\":" + strategy + ",\"questions\":[],\"unsupported\":[]}";
+        when(codex.interpret(anyString())).thenReturn(output);
+        var result = service.interpret(new StrategyAssistantService.Request("현재가 > SMA50&#x20; 등 6조건", "AND 조건, SMA200 상승 기간은 1달"));
+        assertThat(result.ready()).isTrue();
+        assertThat(result.strategy().entry().conditions()).hasSize(6);
+        assertThat(result.strategy().entry().operator()).isEqualTo(StrategyDefinition.Operator.AND);
+        assertThat(result.strategy().originalPrompt()).endsWith("[보완 입력]\nAND 조건, SMA200 상승 기간은 1달");
+        when(codex.interpret(anyString())).thenReturn(output.replace("\"lookbackMonths\": 1", "\"lookbackMonths\": null"));
+        var missing = service.interpret(new StrategyAssistantService.Request("SMA200 상승 중", null));
+        assertThat(missing.ready()).isFalse();
+        assertThat(missing.issues()).extracting(StrategyValidator.Issue::path).contains("entry.conditions[3].lookbackMonths");
+    }
     final CodexClient codex = mock(CodexClient.class);
     final StrategyAssistantService service = new StrategyAssistantService(codex,
             new StrategyJson(new ObjectMapper()), new StrategyValidator());

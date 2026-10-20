@@ -2,6 +2,8 @@
 
 2026-09-14 사용자가 승인한 개별 종목 조건 확장. 기존 자연어 → 검증된 JSON → Java 평가 → 저장된 백테스트 경로를 확장한다. 2026-09-15 [2단계 복수 전략 분리](strategy-batch-input.md)와 [3단계 상대강도 포트폴리오](strategy-portfolio.md)를 추가했다.
 
+2026-10-13에는 형식 2에 이동평균의 달력 개월 추세와 기간 고가·저가 대비 비율 조건을 추가했다. [6조건 AND 예제](#sma-정배열과-52주-가격-조건--2026-10-13)의 계산 기준을 사용자가 확인했다.
+
 ## 계약
 
 - Java 17, 기존 Spring/Jackson/JUnit 사용. 외부 의존성 추가 없음.
@@ -44,7 +46,45 @@
 - [x] 미래 봉을 추가해도 과거 신호·체결·근거가 바뀌지 않는지 검증.
 - [x] `git diff --check`, 변경 범위 검토, 완료/미지원/재시작 필요 사항 기록.
 
-## 손계산 검증 예
+## SMA 정배열과 52주 가격 조건 — 2026-10-13
+
+다음 문장을 자연어 입력란에 붙여 넣으면 한 전략의 6개 AND 조건으로 해석한다. 이미 해석한 초안이라면 보완 입력 후 **다시 해석**해야 한다.
+
+> 국내 주식 일봉 종가 기준. 다음 6개 조건을 모두 충족하면 매수(AND): 종가 > SMA50, SMA50 > SMA150, SMA150 > SMA200, 현재 SMA200 > 달력상 1개월 전 SMA200(해당 날짜가 휴장일이면 그 이전 최근 거래일), 종가 >= 당일 제외 달력상 직전 52주 최고 고가의 75%, 종가 >= 당일 제외 달력상 직전 52주 최저 저가의 130%. 한 달 동안 매일 상승을 요구하지 않는다. 별도 청산 및 위험관리 조건 없음.
+
+기존 원문을 유지할 때의 보완 입력:
+
+> 모두 충족하면 진입하는 AND 조건. SMA200 상승 기간은 달력상 1달: 현재 SMA200이 한 달 전보다 높다. 휴장일은 그 이전 최근 거래일. 일봉 종가 기준, 52주 고가·저가는 당일 제외. 별도 청산과 위험관리 조건 없음.
+
+- `MA_TREND`: `averageType`(SMA/EMA), `period`(1~500봉), `lookbackMonths`(1~60개월), `direction`(UP/DOWN). UP은 현재 평균이 과거 평균보다 엄격히 큰 경우다. 동일 값은 상승이 아니다. DOWN은 엄격히 작은 경우다.
+- 과거 기준일은 한국 날짜의 `minusMonths`다. 예: 2024-03-31의 한 달 전은 2024-02-29. 그 날짜가 휴장일이면 그 이전 최근 저장 거래일 값을 사용한다. 현재 평균과 과거 평균이 모두 준비되어야 한다. 한 달을 20거래일이나 30일로 바꾸지 않는다. 매일 연속 상승이나 회귀 기울기는 지원하지 않는다.
+- `RANGE_RATIO`: `period`, `periodUnit`(BARS/CALENDAR_WEEKS), `priceField`(HIGH/LOW), 양수 `multiplier`, `comparison`. 기존 `RANGE_BREAKOUT`과 같은 당일 제외 구간의 극값에 배수를 곱한다. GT/LT/GTE/LTE/CROSS_ABOVE/CROSS_BELOW를 지원하며 교차에는 전일 기준값도 필요하다.
+- 52주 고가의 25% 이내는 `HIGH × 0.75` 이상이다. 52주 저가보다 30% 이상 높다는 조건은 `LOW × 1.30` 이상이다. 각각 경계값을 포함한다. 별도의 최고가 상한은 추가하지 않는다.
+- 52주 이력의 시작 경계는 포함하며 당일은 제외한다. 예: 2026-01-01 판정의 구간은 `[2025-01-02, 2026-01-01)`이다. 52주 시작일까지의 저장 이력이 없으면 해당 조건은 준비되지 않은 상태다.
+- '상승 중'에 기간이 없으면 미지원 처리 대신 비교 개월 수를 질문한다. AND/OR 누락도 해당 연산자를 질문하며 해석 가능한 조건은 남긴다. 번호 목록은 한 전략의 필터로 처리하고, 보완 입력의 AND를 반영한다.
+- 화면의 **이동평균 기간 추세**, **기간 고가·저가 대비 비율**에서 값을 편집한다. 비율 입력은 퍼센트이므로 고가 기준 75, 저가 기준 130을 넣는다. 빈칸은 자동으로 채우지 않는다.
+- 백테스트와 저장 전략 모의매매가 같은 평가기를 사용한다. SMA 추세 근거에는 현재·과거 평균, 비율 근거에는 종가·극값에 배수를 곱한 가격을 저장한다. 저장된 전략 버전과 실행 스냅샷은 변경하지 않는다.
+
+실행 가능한 전체 JSON: [`strategy-trend-template.json`](../src/test/resources/demo/strategy-trend-template.json). 청산·손절은 지정하지 않았으므로 자동으로 추가하지 않는다. 실행 종목·기간·체결 방식은 기존 실행 화면에서 지정한다.
+
+변경 파일:
+
+- 계산·검증: `StrategyDefinition.java`, `StrategyIndicators.java`, `StrategyEvaluator.java`, `StrategyValidator.java`.
+- 해석·화면: `StrategyAssistantService.java`, `strategy-output.schema.json`, `strategy-workbench.js`.
+- 검증: `TrendTemplateTests.java`, `StrategyAssistantTests.java`, `StrategyPersistenceApiTests.java`, `StrategyPaperEngineTests.java`, `StrategyExpansionLiveTests.java`, `strategy-workbench.test.cjs`, `strategy-expansion.browser.cjs`, 위 JSON 예제.
+- 안내: 이 문서, `strategy-spec.md`, `README.md`.
+
+새 JAR로 서버를 재시작하고 브라우저를 강력 새로고침한 뒤 이전 초안을 다시 해석한다. 새 입력 조건은 기존 형식 2 안에서 확장되므로 DB 구조 변경은 없다.
+
+검증 결과 (2026-10-13):
+
+- `scripts/verify-stage9.ps1 -Offline`: Java 224개 중 217개 통과, 선택 실행 7개 건너뜀, 실패·오류 0. `bootJar` 성공. Node/Edge 40개 통과. 고정 외부 응답과 테스트 DB를 사용하는 전체 검증 결과는 `build/stage9-verification.json`이다.
+- 실제 ChatGPT 로그인 Codex: `StrategyExpansionLiveTests.clarifiedTrendTemplateProducesAllSixAndConditions` 통과. 원문+보완 입력은 6개 AND 조건·질문 0·미지원 0, 일괄 입력도 단일 전략으로 동일 조건을 반환했다. 상승 기간 누락은 개월 수 보완 질문을 반환하고 미지원으로 분류하지 않았다. 결과 파일은 `build/strategy-trend-live.json`, `build/strategy-trend-batch-live.json`, `build/strategy-trend-missing-live.json`이다. OpenAI API 키는 사용하지 않았다.
+- 월말·윤년·휴장일 기준, 현재/과거 SMA 준비 여부, 52주 경계 포함과 당일 제외, 75%/130% 경계값, AND 불충족, 미래 봉 불변성, 양쪽 체결 방식, 저장 버전/실행 스냅샷 불변성과 모의매매 재처리의 중복 방지를 검사했다.
+- 화면에서 기간·방향·비율 수정과 빈칸 유지, 저장 조건 요약의 한 달·75%·130% 표시, 모바일 폭과 키보드 이동을 확인했다. 캡처: `build/strategy-trend-desktop.png`, `build/strategy-ratio-desktop.png`, `build/strategy-trend-mobile.png`.
+- 읽기 전용 코드 리뷰에서 수정이 필요한 결함 없음. 운영 서버 재시작·실제 시세 호출·운영 전략 저장은 수행하지 않았다.
+
+## 기존 확장 조건 손계산 검증 예
 
 - 이전 고가 10, 11, 12 / 현재 종가 15·고가 100: 직전 3봉 신고가 기준은 12이고 매수 신호 발생.
 - 이전 종가 100, 현재 고가 114·저가 109: TR은 14로 갭을 포함한다.

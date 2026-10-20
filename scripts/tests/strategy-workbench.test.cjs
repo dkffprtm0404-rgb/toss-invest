@@ -41,6 +41,17 @@ test('editing extended rules upgrades only the draft contract and invalidates co
   }
 });
 
+test('trend and range ratio conditions upgrade a legacy draft without filling missing values', () => {
+  for (const type of ['MA_TREND', 'RANGE_RATIO']) {
+    const state = new workbench.DraftState();
+    state.accept({ strategy: { schemaVersion: 1, entry: { conditions: [{ type }] } }, ready: false });
+    state.changed();
+    assert.equal(state.draft.schemaVersion, 2);
+    assert.deepEqual(state.draft.entry.conditions[0], { type });
+    assert.equal(state.canSave(), false);
+  }
+});
+
 test('saved combined prompts over 6000 characters reopen as two inputs without changing their text', () => {
   assert.equal(typeof workbench.splitSavedPrompt, 'function');
   const delimiter = '\n\n[보완 입력]\n';

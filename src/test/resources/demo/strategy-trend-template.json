@@ -1,0 +1,18 @@
+{
+  "schemaVersion": 2,
+  "name": "SMA 정배열과 52주 가격 조건",
+  "originalPrompt": "국내 주식 일봉 종가 기준. 다음 6개 조건을 모두 충족하면 매수(AND): 종가 > SMA50, SMA50 > SMA150, SMA150 > SMA200, 현재 SMA200 > 달력상 1개월 전 SMA200(해당 날짜가 휴장일이면 그 이전 최근 거래일), 종가 >= 당일 제외 달력상 직전 52주 최고 고가의 75%, 종가 >= 당일 제외 달력상 직전 52주 최저 저가의 130%. 한 달 동안 매일 상승을 요구하지 않는다. 별도 청산 및 위험관리 조건 없음.",
+  "entry": {
+    "operator": "AND",
+    "conditions": [
+      {"type": "PRICE_MA", "averageType": "SMA", "period": 50, "comparison": "GT"},
+      {"type": "MA_COMPARE", "averageType": "SMA", "shortPeriod": 50, "longPeriod": 150, "comparison": "GT"},
+      {"type": "MA_COMPARE", "averageType": "SMA", "shortPeriod": 150, "longPeriod": 200, "comparison": "GT"},
+      {"type": "MA_TREND", "averageType": "SMA", "period": 200, "lookbackMonths": 1, "direction": "UP"},
+      {"type": "RANGE_RATIO", "period": 52, "periodUnit": "CALENDAR_WEEKS", "priceField": "HIGH", "multiplier": 0.75, "comparison": "GTE"},
+      {"type": "RANGE_RATIO", "period": 52, "periodUnit": "CALENDAR_WEEKS", "priceField": "LOW", "multiplier": 1.30, "comparison": "GTE"}
+    ]
+  },
+  "exit": null,
+  "risk": null
+}
