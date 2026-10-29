@@ -5,6 +5,34 @@ const path=require('node:path');
 const {chromium}=require('playwright');
 const source=fs.readFileSync(path.resolve(__dirname,'../../src/main/resources/static/js/strategy-workbench.js'),'utf8');
 const style=fs.readFileSync(path.resolve(__dirname,'../../src/main/resources/static/css/strategy-workbench.css'),'utf8');
+
+test('portfolio history without data shows an empty state instead of zero-return performance',async()=>{
+ const browser=await chromium.launch({headless:true,channel:'msedge'});
+ try {
+  const page=await browser.newPage();page.setDefaultTimeout(5000);const errors=[];page.on('pageerror',e=>errors.push(e.message));
+  const strategy={schemaVersion:3,name:'데이터 없는 전략',originalPrompt:'상대강도 원문',entry:null,exit:null,risk:null,portfolio:{market:'KOSPI',lookbackMonths:6,topN:10,smaPeriod:200,selectionOrder:'FILTER_THEN_RANK',rebalanceTiming:'WEEK_END',weighting:'EQUAL_SLOTS'}};
+  const saved={id:20,version:1,strategy},result={status:'NO_DATA',initialCapital:1000,finalEquity:1000,totalReturn:0,maxDrawdown:0,cash:1000,equity:[],trades:[],selections:[],holdings:[],pending:[],assumptions:[]};
+  const detail={id:40,status:'NO_DATA',snapshot:{strategy:saved,execution:{startDate:'2025-07-01',endDate:'2025-07-02',universe:{source:'test'}},result}};
+  await page.route('**/*',async route=>{
+   const p=new URL(route.request().url()).pathname;let data=[];
+   if(p==='/')return route.fulfill({contentType:'text/html',body:'<!doctype html><html lang="ko"><div id="strategyWorkbench"></div></html>'});
+   if(p.endsWith('/status'))data={ready:true};
+   else if(p==='/api/strategies'||p.endsWith('/versions'))data=[saved];
+   else if(p==='/api/strategies/20')data=saved;
+   else if(p.endsWith('/portfolio-backtests'))data=[{id:40,version:1,status:'NO_DATA'}];
+   else if(p==='/api/portfolio/runs/40')data=detail;
+   return route.fulfill({json:data});
+  });
+  await page.goto('http://portfolio.test/');await page.addScriptTag({content:source});
+  await page.getByRole('button',{name:'데이터 없는 전략 · #20 · 최신 v1',exact:true}).click();
+  await page.getByRole('button',{name:/#40.*데이터 없음/}).click();
+  await page.getByText('요청 기간에 가격 데이터가 없어 성과를 계산하지 않았습니다.',{exact:true}).waitFor();
+  assert.equal(await page.getByText('계좌 수익률',{exact:true}).count(),0);
+  assert.equal(await page.getByText('최종 평가액 (원)',{exact:true}).count(),0);
+  assert.equal(await page.getByRole('img',{name:'일별 계좌 평가액',exact:true}).count(),0);
+  assert.deepEqual(errors,[]);
+ }finally{await browser.close();}
+});
 test('portfolio draft edits and execution use separate routes and show account and rank evidence',async()=>{
  const browser=await chromium.launch({headless:true,channel:'msedge'});
  try {

@@ -810,7 +810,8 @@
     resultArea.append(node('h4',`${composite?'통합 전략':'포트폴리오'} 실행 #${item.id} · ${statusLabel(item.status)}${needsReview?' · 데이터 범위·이력 확인 필요':''}`));
     pairs(resultArea,[['전략 / 버전',`${s.strategy.strategy.name} / v${s.strategy.version}`],['자료 출처',s.execution.universe?.source || s.data?.source || '저장된 종목 일봉'],['거래 대상',s.execution.symbol || '선정 종목'],['요청 기간',`${s.execution.startDate} ~ ${s.execution.endDate}`]]);
     if(s.error)resultArea.append(node('p',`${s.error.code}: ${s.error.message}`,'sw-error'));
-    if(r){
+    if(item.status==='NO_DATA')resultArea.append(node('p','요청 기간에 가격 데이터가 없어 성과를 계산하지 않았습니다.','sw-muted'));
+    if(r && item.status!=='NO_DATA'){
       const info=node('section',null,needsReview?'sw-caution':'sw-muted');info.setAttribute('aria-label','실행 데이터 확인');
       info.append(node('h5','실행 데이터 확인'));
       pairs(info,[['실제 계산 기간',coverage.days?`${coverage.firstDate} ~ ${coverage.lastDate}`:'없음'],['계산 거래일 수',`${coverage.days}거래일`]]);

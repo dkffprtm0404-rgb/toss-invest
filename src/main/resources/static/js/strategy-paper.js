@@ -125,10 +125,10 @@
     }
   }
   window.StrategyPaper = {select(saved) {
+    document.getElementById('accountTab')?.click();root.scrollIntoView({behavior:'smooth',block:'start'});
     if (saved.strategy.portfolio || saved.strategy.composition || saved.strategy.schemaVersion > 2) {message('현재 단일 종목 전략(형식 1·2)만 지원합니다.',true);return;}
     selected=structuredClone(saved);requestSignature=null;
     target.textContent=`실행 대상: ${saved.strategy.name || '이름 없음'} · 전략 #${saved.id} / 저장 버전 ${saved.version}`;
-    document.getElementById('accountTab')?.click();root.scrollIntoView({behavior:'smooth',block:'start'});
     message('실행 종목·자금·비용을 입력해 주세요. 편집 중인 초안은 반영되지 않습니다.');
   }};
   operation(()=>list(false));

@@ -25,6 +25,21 @@ class PortfolioApiTests {
     @Autowired MockMvc mvc; @Autowired StrategyJson json; @Autowired SavedStrategyService strategies; @Autowired CandleRepository candles;
     final PortfolioEngineTests f=new PortfolioEngineTests();
 
+    @Test void noDataRunKeepsItsEmptyHistoryAfterCandlesAreAdded() throws Exception {
+        var saved = strategies.create(f.strategy(1, SelectionOrder.FILTER_THEN_RANK, null));
+        var response = mvc.perform(post("/api/strategies/" + saved.id() + "/portfolio-backtests")
+                .contentType(MediaType.APPLICATION_JSON).content(json.write(f.request(f.start, false, 1))))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.status").value("NO_DATA"))
+                .andExpect(jsonPath("$.snapshot.result.equity").isEmpty())
+                .andExpect(jsonPath("$.snapshot.result.trades").isEmpty())
+                .andReturn().getResponse().getContentAsString();
+        long id = new com.fasterxml.jackson.databind.ObjectMapper().readTree(response).path("id").asLong();
+        candles.saveAllAndFlush(f.bars("A"));
+        mvc.perform(get("/api/portfolio/runs/" + id)).andExpect(status().isOk()).andExpect(content().json(response));
+        mvc.perform(get("/api/strategies/" + saved.id() + "/portfolio-backtests"))
+                .andExpect(status().isOk()).andExpect(jsonPath("$[0].status").value("NO_DATA"));
+    }
+
     @Test void savedPortfolioRunsAndHistoryNeverUsesChangedCandlesThenCascadesOnStrategyDelete() throws Exception {
         var saved=strategies.create(f.strategy(1,SelectionOrder.FILTER_THEN_RANK,null)); candles.saveAll(f.bars("A")); candles.flush();
         var response=mvc.perform(post("/api/strategies/"+saved.id()+"/portfolio-backtests").contentType(MediaType.APPLICATION_JSON).content(json.write(f.request(f.start,false,1))))

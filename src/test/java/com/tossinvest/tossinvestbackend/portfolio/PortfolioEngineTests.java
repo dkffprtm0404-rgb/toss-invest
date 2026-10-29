@@ -20,6 +20,27 @@ class PortfolioEngineTests {
     final List<LocalDate> calendar = LocalDate.of(2024, 12, 1).datesUntil(LocalDate.of(2025, 7, 26))
             .filter(d -> d.getDayOfWeek().getValue() <= 5).toList();
 
+    @Test void emptyOrWarmupOnlyCandlesDoNotCreatePerformance() {
+        var warmup = bars("A").stream().filter(c -> date(c).isBefore(start)).toList();
+        for (var input : List.of(List.<CandleEntity>of(), warmup)) {
+            var result = engine.run(strategy(1, SelectionOrder.FILTER_THEN_RANK, null), request(start, false, 1), input);
+            assertThat(result.status()).isEqualTo("NO_DATA");
+            assertThat(result.equity()).isEmpty();
+            assertThat(result.trades()).isEmpty();
+            assertThat(result.pending()).isEmpty();
+            assertThat(result.cash()).isEqualByComparingTo("1000");
+        }
+    }
+
+    @Test void readyPricesWithoutEntrySignalStillReportNoTrades() {
+        var input = bars("A");
+        set(input, "A", start, "100", "100");
+        var result = engine.run(strategy(1, SelectionOrder.FILTER_THEN_RANK, null), request(start, false, 1), input);
+        assertThat(result.status()).isEqualTo("NO_TRADES");
+        assertThat(result.equity()).hasSize(1);
+        assertThat(result.trades()).isEmpty();
+    }
+
     @Test void sixCalendarMonthsReturnAndTiesUseCodeAndCashSlots() {
         List<CandleEntity> bars = bars("B", "A");
         PortfolioResult result = engine.run(strategy(2, SelectionOrder.FILTER_THEN_RANK, null), request(start, false, 2), bars);

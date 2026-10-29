@@ -1,6 +1,31 @@
 const test=require('node:test'),assert=require('node:assert/strict'),fs=require('node:fs'),path=require('node:path');
 const {chromium}=require('playwright');
 const root=path.resolve(__dirname,'../../src/main/resources/static');
+
+test('unsupported paper strategies show their warning in the visible account tab',async()=>{
+ const browser=await chromium.launch({headless:true,channel:'msedge'});
+ try {
+  const page=await browser.newPage();page.setDefaultTimeout(5000);const errors=[],posts=[];
+  page.on('pageerror',e=>errors.push(e.message));
+  await page.route('**/*',async route=>{
+   const req=route.request(),url=new URL(req.url());
+   if(req.method()==='POST')posts.push(url.pathname);
+   if(url.hostname!=='paper.test')return route.fulfill({body:''});
+   if(url.pathname==='/'||url.pathname.startsWith('/css/')||['/js/dashboard.js','/js/strategy-paper.js'].includes(url.pathname))
+    return route.fulfill({body:fs.readFileSync(path.join(root,url.pathname==='/'?'index.html':url.pathname)),contentType:url.pathname==='/'?'text/html':url.pathname.endsWith('.css')?'text/css':'application/javascript'});
+   if(url.pathname.endsWith('.js'))return route.fulfill({body:'',contentType:'application/javascript'});
+   return route.fulfill({json:[]});
+  });
+  await page.goto('http://paper.test/');
+  for(const strategy of [{schemaVersion:3,portfolio:{}},{schemaVersion:4,composition:{}}]){
+   await page.getByRole('tab',{name:'투자 전략',exact:true}).click();
+   await page.evaluate(strategy=>window.StrategyPaper.select({id:4,version:1,strategy}),strategy);
+   await page.locator('#strategyPaper').getByRole('status').filter({hasText:'단일 종목 전략(형식 1·2)만 지원'}).waitFor();
+   assert.equal(await page.getByRole('tab',{name:'계좌·모의매매',exact:true}).getAttribute('aria-selected'),'true');
+  }
+  assert.deepEqual(posts,[]);assert.deepEqual(errors,[]);
+ }finally{await browser.close();}
+});
 test('saved version, explicit inputs, retry identity, safe text and graceful stop',async()=>{
  const browser=await chromium.launch({headless:true,channel:'msedge'});
  try {

@@ -51,6 +51,10 @@ public class PortfolioEngine {
         }
         PortfolioResult execute() {
             LocalDate last = null;
+            // A calendar and starting cash alone are not market observations.
+            boolean hasData = prices.values().stream().anyMatch(series -> series.keySet().stream().anyMatch(day ->
+                    !day.isBefore(request.startDate()) && !day.isAfter(request.endDate())
+                            && Collections.binarySearch(calendar, day) >= 0));
             for (int i=0;i<calendar.size();i++) {
                 LocalDate day = calendar.get(i);
                 if (day.isBefore(request.startDate()) || day.isAfter(request.endDate())) continue;
@@ -89,7 +93,7 @@ public class PortfolioEngine {
                 }
                 BigDecimal value=valuation(day,false); peak=peak.max(value);
                 maxDrawdown=maxDrawdown.max(ONE.subtract(value.divide(peak,MC)));
-                equity.add(new EquityPoint(day,value,cash));
+                if (hasData) equity.add(new EquityPoint(day,value,cash));
             }
             List<Holding> held = new ArrayList<>();
             if (last != null) for (var e : positions.entrySet()) {
