@@ -665,6 +665,187 @@
                               "comparison"
                             ],
                             "additionalProperties": false
+                          },
+                          {
+                            "type": "object",
+                            "properties": {
+                              "type": {
+                                "type": "string",
+                                "enum": [
+                                  "MACD"
+                                ]
+                              },
+                              "fastPeriod": {
+                                "anyOf": [
+                                  {
+                                    "type": "integer"
+                                  },
+                                  {
+                                    "type": "null"
+                                  }
+                                ]
+                              },
+                              "slowPeriod": {
+                                "anyOf": [
+                                  {
+                                    "type": "integer"
+                                  },
+                                  {
+                                    "type": "null"
+                                  }
+                                ]
+                              },
+                              "signalPeriod": {
+                                "anyOf": [
+                                  {
+                                    "type": "integer"
+                                  },
+                                  {
+                                    "type": "null"
+                                  }
+                                ]
+                              },
+                              "value": {
+                                "anyOf": [
+                                  {
+                                    "type": "string",
+                                    "enum": [
+                                      "LINE",
+                                      "SIGNAL",
+                                      "HISTOGRAM"
+                                    ]
+                                  },
+                                  {
+                                    "type": "null"
+                                  }
+                                ]
+                              },
+                              "reference": {
+                                "anyOf": [
+                                  {
+                                    "type": "string",
+                                    "enum": [
+                                      "THRESHOLD",
+                                      "SIGNAL"
+                                    ]
+                                  },
+                                  {
+                                    "type": "null"
+                                  }
+                                ]
+                              },
+                              "threshold": {
+                                "anyOf": [
+                                  {
+                                    "type": "number"
+                                  },
+                                  {
+                                    "type": "null"
+                                  }
+                                ]
+                              },
+                              "comparison": {
+                                "anyOf": [
+                                  {
+                                    "type": "string",
+                                    "enum": [
+                                      "GT",
+                                      "LT",
+                                      "GTE",
+                                      "LTE",
+                                      "CROSS_ABOVE",
+                                      "CROSS_BELOW"
+                                    ]
+                                  },
+                                  {
+                                    "type": "null"
+                                  }
+                                ]
+                              }
+                            },
+                            "required": [
+                              "type",
+                              "fastPeriod",
+                              "slowPeriod",
+                              "signalPeriod",
+                              "value",
+                              "reference",
+                              "threshold",
+                              "comparison"
+                            ],
+                            "additionalProperties": false
+                          },
+                          {
+                            "type": "object",
+                            "properties": {
+                              "type": {
+                                "type": "string",
+                                "enum": [
+                                  "BOLLINGER"
+                                ]
+                              },
+                              "period": {
+                                "anyOf": [
+                                  {
+                                    "type": "integer"
+                                  },
+                                  {
+                                    "type": "null"
+                                  }
+                                ]
+                              },
+                              "multiplier": {
+                                "anyOf": [
+                                  {
+                                    "type": "number"
+                                  },
+                                  {
+                                    "type": "null"
+                                  }
+                                ]
+                              },
+                              "band": {
+                                "anyOf": [
+                                  {
+                                    "type": "string",
+                                    "enum": [
+                                      "UPPER",
+                                      "MIDDLE",
+                                      "LOWER"
+                                    ]
+                                  },
+                                  {
+                                    "type": "null"
+                                  }
+                                ]
+                              },
+                              "comparison": {
+                                "anyOf": [
+                                  {
+                                    "type": "string",
+                                    "enum": [
+                                      "GT",
+                                      "LT",
+                                      "GTE",
+                                      "LTE",
+                                      "CROSS_ABOVE",
+                                      "CROSS_BELOW"
+                                    ]
+                                  },
+                                  {
+                                    "type": "null"
+                                  }
+                                ]
+                              }
+                            },
+                            "required": [
+                              "type",
+                              "period",
+                              "multiplier",
+                              "band",
+                              "comparison"
+                            ],
+                            "additionalProperties": false
                           }
                         ]
                       }
@@ -1317,6 +1498,187 @@
                               "periodUnit",
                               "priceField",
                               "multiplier",
+                              "comparison"
+                            ],
+                            "additionalProperties": false
+                          },
+                          {
+                            "type": "object",
+                            "properties": {
+                              "type": {
+                                "type": "string",
+                                "enum": [
+                                  "MACD"
+                                ]
+                              },
+                              "fastPeriod": {
+                                "anyOf": [
+                                  {
+                                    "type": "integer"
+                                  },
+                                  {
+                                    "type": "null"
+                                  }
+                                ]
+                              },
+                              "slowPeriod": {
+                                "anyOf": [
+                                  {
+                                    "type": "integer"
+                                  },
+                                  {
+                                    "type": "null"
+                                  }
+                                ]
+                              },
+                              "signalPeriod": {
+                                "anyOf": [
+                                  {
+                                    "type": "integer"
+                                  },
+                                  {
+                                    "type": "null"
+                                  }
+                                ]
+                              },
+                              "value": {
+                                "anyOf": [
+                                  {
+                                    "type": "string",
+                                    "enum": [
+                                      "LINE",
+                                      "SIGNAL",
+                                      "HISTOGRAM"
+                                    ]
+                                  },
+                                  {
+                                    "type": "null"
+                                  }
+                                ]
+                              },
+                              "reference": {
+                                "anyOf": [
+                                  {
+                                    "type": "string",
+                                    "enum": [
+                                      "THRESHOLD",
+                                      "SIGNAL"
+                                    ]
+                                  },
+                                  {
+                                    "type": "null"
+                                  }
+                                ]
+                              },
+                              "threshold": {
+                                "anyOf": [
+                                  {
+                                    "type": "number"
+                                  },
+                                  {
+                                    "type": "null"
+                                  }
+                                ]
+                              },
+                              "comparison": {
+                                "anyOf": [
+                                  {
+                                    "type": "string",
+                                    "enum": [
+                                      "GT",
+                                      "LT",
+                                      "GTE",
+                                      "LTE",
+                                      "CROSS_ABOVE",
+                                      "CROSS_BELOW"
+                                    ]
+                                  },
+                                  {
+                                    "type": "null"
+                                  }
+                                ]
+                              }
+                            },
+                            "required": [
+                              "type",
+                              "fastPeriod",
+                              "slowPeriod",
+                              "signalPeriod",
+                              "value",
+                              "reference",
+                              "threshold",
+                              "comparison"
+                            ],
+                            "additionalProperties": false
+                          },
+                          {
+                            "type": "object",
+                            "properties": {
+                              "type": {
+                                "type": "string",
+                                "enum": [
+                                  "BOLLINGER"
+                                ]
+                              },
+                              "period": {
+                                "anyOf": [
+                                  {
+                                    "type": "integer"
+                                  },
+                                  {
+                                    "type": "null"
+                                  }
+                                ]
+                              },
+                              "multiplier": {
+                                "anyOf": [
+                                  {
+                                    "type": "number"
+                                  },
+                                  {
+                                    "type": "null"
+                                  }
+                                ]
+                              },
+                              "band": {
+                                "anyOf": [
+                                  {
+                                    "type": "string",
+                                    "enum": [
+                                      "UPPER",
+                                      "MIDDLE",
+                                      "LOWER"
+                                    ]
+                                  },
+                                  {
+                                    "type": "null"
+                                  }
+                                ]
+                              },
+                              "comparison": {
+                                "anyOf": [
+                                  {
+                                    "type": "string",
+                                    "enum": [
+                                      "GT",
+                                      "LT",
+                                      "GTE",
+                                      "LTE",
+                                      "CROSS_ABOVE",
+                                      "CROSS_BELOW"
+                                    ]
+                                  },
+                                  {
+                                    "type": "null"
+                                  }
+                                ]
+                              }
+                            },
+                            "required": [
+                              "type",
+                              "period",
+                              "multiplier",
+                              "band",
                               "comparison"
                             ],
                             "additionalProperties": false

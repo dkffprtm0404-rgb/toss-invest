@@ -15,11 +15,15 @@ public interface CandleRepository extends JpaRepository<CandleEntity, CandleEnti
 
     long countBySymbol(String symbol);
 
+    long deleteBySymbolAndTimestampLessThan(String symbol, long cutoff);
+
+    long deleteByTimestampLessThan(long cutoff);
+
     List<CandleEntity> findTop1BySymbolOrderByTimestampAsc(String symbol);
 
     List<CandleEntity> findTop1BySymbolOrderByTimestampDesc(String symbol);
 
-    /** 심볼별 캔들 전체를 최신순으로 조회 (롤링 윈도우 정리용) */
+    /** 심볼별 캔들 전체를 최신순으로 조회 */
     List<CandleEntity> findBySymbolOrderByTimestampDesc(String symbol);
 
     /** 캔들 데이터가 있는 종목 코드 목록 (distinct, 전체 행 로드 없이 심볼만 조회) */

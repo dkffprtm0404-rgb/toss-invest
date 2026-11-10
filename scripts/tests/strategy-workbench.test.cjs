@@ -52,6 +52,19 @@ test('trend and range ratio conditions upgrade a legacy draft without filling mi
   }
 });
 
+test('MACD and Bollinger edits upgrade only the draft and keep explicit missing parameters', () => {
+  for (const type of ['MACD', 'BOLLINGER']) {
+    const original = { schemaVersion: 1, entry: { conditions: [{ type }] } };
+    const state = new workbench.DraftState();
+    state.accept({ strategy: structuredClone(original), ready: false });
+    state.changed();
+    assert.equal(state.draft.schemaVersion, 2);
+    assert.deepEqual(state.draft.entry.conditions[0], { type });
+    assert.equal(state.canSave(), false);
+    assert.equal(original.schemaVersion, 1);
+  }
+});
+
 test('saved combined prompts over 6000 characters reopen as two inputs without changing their text', () => {
   assert.equal(typeof workbench.splitSavedPrompt, 'function');
   const delimiter = '\n\n[보완 입력]\n';

@@ -13,7 +13,8 @@ $repoRoot = Split-Path -Parent $PSScriptRoot
 $environmentNames = @('JAVA_HOME', 'NODE_PATH', 'RUN_WEB_SMOKE', 'RUN_CODEX_LIVE',
     'RUN_EXPLANATION_LIVE', 'RUN_STRATEGY_BATCH_LIVE', 'RUN_STRATEGY_EXPANSION_LIVE',
     'RUN_STRATEGY_PORTFOLIO_LIVE', 'SPRING_PROFILES_ACTIVE', 'TOSS_OAUTH_CLIENT_ID',
-    'TOSS_OAUTH_CLIENT_SECRET', 'TOSS_API_BASE_URL', 'STRATEGY_PAPER_SCHEDULING_ENABLED')
+    'TOSS_OAUTH_CLIENT_SECRET', 'TOSS_API_BASE_URL', 'STRATEGY_PAPER_SCHEDULING_ENABLED',
+    'MARKET_BRIEFING_SCHEDULING_ENABLED', 'RUN_STRATEGY_INDICATORS_LIVE', 'RUN_MARKET_BRIEFING_LIVE')
 $previousEnvironment = @{}
 foreach ($name in $environmentNames) {
     $previousEnvironment[$name] = [Environment]::GetEnvironmentVariable($name, 'Process')
@@ -67,6 +68,7 @@ try {
     $env:TOSS_OAUTH_CLIENT_SECRET = 'stage9-unused'
     $env:TOSS_API_BASE_URL = 'http://127.0.0.1:1'
     $env:STRATEGY_PAPER_SCHEDULING_ENABLED = 'false'
+    $env:MARKET_BRIEFING_SCHEDULING_ENABLED = 'false'
     $gradleArguments = @('test', 'bootJar', '--console=plain', '--rerun-tasks')
     if ($Offline) { $gradleArguments += '--offline' }
     if ($GradleUserHome) { $gradleArguments += @('--gradle-user-home', $GradleUserHome) }

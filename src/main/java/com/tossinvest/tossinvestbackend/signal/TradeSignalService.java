@@ -7,7 +7,10 @@ import org.springframework.stereotype.Service;
 
 import java.math.BigDecimal;
 import java.math.RoundingMode;
+import java.time.*;
+import java.time.format.DateTimeParseException;
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.List;
 
 /**
@@ -40,6 +43,8 @@ public class TradeSignalService {
     private static final int BUY_SCORE_THRESHOLD = 5;
     private static final int BUY_SCORE_THRESHOLD_EXPERIMENTAL = 4; // 2.1: 4점 기준 병행 기록
     private static final BigDecimal TRAILING_TRIGGER_RATE = BigDecimal.valueOf(0.03);
+    private static final ZoneId MARKET_ZONE = ZoneId.of("Asia/Seoul");
+    private static final LocalTime DAILY_CLOSE = LocalTime.of(15,30);
 
     private final MarketDataService marketDataService;
 
@@ -171,6 +176,40 @@ public class TradeSignalService {
     public TradeSignal evaluateForSell(String symbol, BigDecimal avgPrice, BigDecimal peakRateSinceBuy, Integer holdingDays) {
         CandleResponse candleResponse = marketDataService.getCandles(symbol, "1d", 60);
         List<CandleResponse.Candle> candles = sortedAscending(candleResponse);
+        return evaluateForSell(symbol,avgPrice,peakRateSinceBuy,holdingDays,candles);
+    }
+
+    /** Reuses the signal's one daily-bar response; entry day is zero and missing sessions are not inferred. */
+    public TradeSignal evaluateForSellSince(String symbol, BigDecimal avgPrice, BigDecimal peakRateSinceBuy, LocalDate entryDate) {
+        var candles=sortedAscending(marketDataService.getCandles(symbol,"1d",60));
+        Integer holdingDays=entryDate==null?null:observedHoldingDays(candles,entryDate,ZonedDateTime.now(MARKET_ZONE));
+        return evaluateForSell(symbol,avgPrice,peakRateSinceBuy,holdingDays,candles);
+    }
+
+    private static int observedHoldingDays(List<CandleResponse.Candle> candles,LocalDate entryDate,ZonedDateTime now) {
+        LocalDate lastCompleted=now.toLocalTime().isBefore(DAILY_CLOSE)?now.toLocalDate().minusDays(1):now.toLocalDate();
+        var dates=new HashSet<LocalDate>();
+        for(var candle:candles) {
+            LocalDate day=dailyDate(candle.getTimestamp());
+            if(day==null||!day.isAfter(entryDate)||day.isAfter(lastCompleted))continue;
+            try {
+                if(candle.getVolume()!=null&&new BigDecimal(candle.getVolume()).signum()>0)dates.add(day);
+            } catch(NumberFormatException ignored) { /* A malformed volume is not an observed trading session. */ }
+        }
+        return dates.size();
+    }
+
+    private static LocalDate dailyDate(String timestamp) {
+        if(timestamp==null)return null;
+        try {return OffsetDateTime.parse(timestamp).atZoneSameInstant(MARKET_ZONE).toLocalDate();}
+        catch(DateTimeParseException ignored) {
+            try {return Instant.ofEpochMilli(Long.parseLong(timestamp)).atZone(MARKET_ZONE).toLocalDate();}
+            catch(NumberFormatException|DateTimeException invalid) {return null;}
+        }
+    }
+
+    private TradeSignal evaluateForSell(String symbol,BigDecimal avgPrice,BigDecimal peakRateSinceBuy,
+                                        Integer holdingDays,List<CandleResponse.Candle> candles) {
 
         if (candles.isEmpty()) {
             return TradeSignal.builder()

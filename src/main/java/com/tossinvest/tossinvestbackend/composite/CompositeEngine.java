@@ -64,6 +64,11 @@ public class CompositeEngine {
         }
         CompositeResult execute() {
             LocalDate last=null;
+            boolean hasData=prices.entrySet().stream()
+                    .filter(series->request.symbol()==null||request.symbol().equals(series.getKey()))
+                    .anyMatch(series->series.getValue().keySet().stream().anyMatch(day->
+                            !day.isBefore(request.startDate())&&!day.isAfter(request.endDate())
+                                    &&Collections.binarySearch(calendar,day)>=0));
             for(int i=0;i<calendar.size();i++) {
                 LocalDate day=calendar.get(i);if(day.isBefore(request.startDate())||day.isAfter(request.endDate()))continue;last=day;
                 var soldToday=new HashSet<String>();
@@ -115,7 +120,7 @@ public class CompositeEngine {
                     if(request.executionMode()==NEXT_DAY_OPEN)pending=signal;else fill(signal,day,false,soldToday);
                 }
                 BigDecimal value=valuation(day,false);peak=peak.max(value);maxDrawdown=maxDrawdown.max(ONE.subtract(value.divide(peak,MC)));
-                equity.add(new EquityPoint(day,value,cash));
+                if(hasData)equity.add(new EquityPoint(day,value,cash));
             }
             var holdings=new ArrayList<Holding>();
             if(last!=null)for(var held:positions.entrySet()){BigDecimal close=price(held.getKey(),last,false);var p=held.getValue();holdings.add(new Holding(held.getKey(),p.quantity,p.average,close,close.multiply(BigDecimal.valueOf(p.quantity),MC)));}

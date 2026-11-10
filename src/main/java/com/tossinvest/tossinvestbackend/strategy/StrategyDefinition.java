@@ -43,6 +43,9 @@ public record StrategyDefinition(Integer schemaVersion, String name, String orig
     public enum PriceField { HIGH, LOW }
     public enum PeakBasis { CLOSE, HIGH }
     public enum AtrMethod { SIMPLE, WILDER }
+    public enum MacdValue { LINE, SIGNAL, HISTOGRAM }
+    public enum MacdReference { THRESHOLD, SIGNAL }
+    public enum BollingerBand { UPPER, MIDDLE, LOWER }
 
     @JsonTypeInfo(use = JsonTypeInfo.Id.NAME, property = "type")
     @JsonSubTypes({
@@ -54,10 +57,12 @@ public record StrategyDefinition(Integer schemaVersion, String name, String orig
             @JsonSubTypes.Type(value = PriceMovingAverage.class, name = "PRICE_MA"),
             @JsonSubTypes.Type(value = MovingAverageTrend.class, name = "MA_TREND"),
             @JsonSubTypes.Type(value = RangeRatio.class, name = "RANGE_RATIO"),
-            @JsonSubTypes.Type(value = AtrBreakout.class, name = "ATR_BREAKOUT")
+            @JsonSubTypes.Type(value = AtrBreakout.class, name = "ATR_BREAKOUT"),
+            @JsonSubTypes.Type(value = Macd.class, name = "MACD"),
+            @JsonSubTypes.Type(value = Bollinger.class, name = "BOLLINGER")
     })
     public sealed interface Condition permits MovingAverageCross, Rsi, Volume, RangeBreakout,
-            MovingAverageCompare, PriceMovingAverage, MovingAverageTrend, RangeRatio, AtrBreakout { }
+            MovingAverageCompare, PriceMovingAverage, MovingAverageTrend, RangeRatio, AtrBreakout, Macd, Bollinger { }
 
     public record MovingAverageCross(AverageType averageType, Integer shortPeriod, Integer longPeriod,
                                      Direction direction) implements Condition { }
@@ -74,6 +79,9 @@ public record StrategyDefinition(Integer schemaVersion, String name, String orig
     public record RangeRatio(Integer period, PeriodUnit periodUnit, PriceField priceField,
                              BigDecimal multiplier, Comparison comparison) implements Condition { }
     public record AtrBreakout(AtrMethod method, Integer period, BigDecimal multiplier, Comparison comparison) implements Condition { }
+    public record Macd(Integer fastPeriod, Integer slowPeriod, Integer signalPeriod, MacdValue value,
+                       MacdReference reference, BigDecimal threshold, Comparison comparison) implements Condition { }
+    public record Bollinger(Integer period, BigDecimal multiplier, BollingerBand band, Comparison comparison) implements Condition { }
 
     public record Risk(StopLoss stopLoss, TakeProfit takeProfit, TimeExit timeExit, TrailingPolicy trailing,
                        @JsonInclude(JsonInclude.Include.NON_NULL) TrailingStop trailingStop,

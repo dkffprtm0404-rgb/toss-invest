@@ -81,9 +81,8 @@ public class PaperTradingService {
         Map<String, Future<TradeSignal>> futures = new LinkedHashMap<>();
 
         for (PaperPosition pos : openPositions) {
-            int holdingDays = (int)(LocalDate.now().toEpochDay() - pos.getEntryDate().toEpochDay());
             futures.put(pos.getSymbol(), ex.submit(() ->
-                    signalService.evaluateForSell(pos.getSymbol(), pos.getEntryPrice(), pos.getPeakRate(), holdingDays)));
+                    signalService.evaluateForSellSince(pos.getSymbol(), pos.getEntryPrice(), pos.getPeakRate(), pos.getEntryDate())));
         }
         ex.shutdown();
         try { ex.awaitTermination(60, TimeUnit.SECONDS); } catch (InterruptedException ignored) {}
@@ -147,9 +146,8 @@ public class PaperTradingService {
             for (String sym : batch) {
                 if (open.containsKey(sym)) {
                     PaperPosition pos = open.get(sym);
-                    int days = (int)(LocalDate.now().toEpochDay() - pos.getEntryDate().toEpochDay());
                     futures.put(sym, ex.submit(() ->
-                            signalService.evaluateForSell(sym, pos.getEntryPrice(), pos.getPeakRate(), days)));
+                            signalService.evaluateForSellSince(sym, pos.getEntryPrice(), pos.getPeakRate(), pos.getEntryDate())));
                 } else if (on) {
                     futures.put(sym, ex.submit(() -> signalService.evaluateForBuy(sym)));
                 }

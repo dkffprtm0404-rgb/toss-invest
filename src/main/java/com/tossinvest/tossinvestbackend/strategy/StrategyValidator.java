@@ -140,6 +140,27 @@ public class StrategyValidator {
                 period(atr.period(), p + ".period", issues);
                 positive(atr.multiplier(), p + ".multiplier", issues);
                 required(atr.comparison(), p + ".comparison", issues);
+            } else if (condition instanceof Macd macd) {
+                period(macd.fastPeriod(), p + ".fastPeriod", issues);
+                period(macd.slowPeriod(), p + ".slowPeriod", issues);
+                period(macd.signalPeriod(), p + ".signalPeriod", issues);
+                required(macd.value(), p + ".value", issues);
+                required(macd.reference(), p + ".reference", issues);
+                required(macd.comparison(), p + ".comparison", issues);
+                if (macd.fastPeriod() != null && macd.slowPeriod() != null && macd.fastPeriod() >= macd.slowPeriod())
+                    invalid(p + ".slowPeriod", "MACD 장기 EMA 기간은 단기 EMA 기간보다 커야 합니다.", issues);
+                if (macd.reference() == MacdReference.THRESHOLD) required(macd.threshold(), p + ".threshold", issues);
+                if (macd.reference() == MacdReference.SIGNAL) {
+                    if (macd.value() != null && macd.value() != MacdValue.LINE)
+                        invalid(p + ".value", "시그널선과 비교할 때에는 MACD선(LINE)을 선택해 주세요.", issues);
+                    if (macd.threshold() != null)
+                        invalid(p + ".threshold", "시그널선 비교에는 숫자 기준을 함께 입력하지 않습니다.", issues);
+                }
+            } else if (condition instanceof Bollinger bollinger) {
+                period(bollinger.period(), p + ".period", issues);
+                positive(bollinger.multiplier(), p + ".multiplier", issues);
+                required(bollinger.band(), p + ".band", issues);
+                required(bollinger.comparison(), p + ".comparison", issues);
             }
         }
     }
@@ -180,7 +201,8 @@ public class StrategyValidator {
             if (group == null || group.conditions() == null) continue;
             for (Condition c : group.conditions()) {
                 if (c instanceof RangeBreakout || c instanceof MovingAverageCompare || c instanceof PriceMovingAverage
-                        || c instanceof MovingAverageTrend || c instanceof RangeRatio || c instanceof AtrBreakout)
+                        || c instanceof MovingAverageTrend || c instanceof RangeRatio || c instanceof AtrBreakout
+                        || c instanceof Macd || c instanceof Bollinger)
                     return true;
                 if (c instanceof Rsi rsi && (rsi.comparison() == Comparison.GT || rsi.comparison() == Comparison.LT)) return true;
             }

@@ -7,13 +7,24 @@ KRX 로그인 불필요. 코스피/코스닥 시가총액 상위 100개씩 자�
 """
 
 import os, csv, time
-from datetime import datetime
+from datetime import datetime, timedelta, timezone
 import FinanceDataReader as fdr
 
 TOP_N      = 100
 EXCLUDE    = {"102940", "091990", "950160"}
-START_DATE = "2023-10-01"
-END_DATE   = datetime.today().strftime("%Y-%m-%d")
+KST        = timezone(timedelta(hours=9))
+NOW        = datetime.now(KST)
+TODAY      = NOW.date()
+# 달력 3년 전을 포함한다. 윤일은 해당 연도의 2월 말일로 조정한다.
+try:
+    START_DATE = TODAY.replace(year=TODAY.year - 3).isoformat()
+except ValueError:
+    START_DATE = TODAY.replace(year=TODAY.year - 3, day=28).isoformat()
+# 장중의 미완성 당일봉을 가져오지 않는다. 공휴일은 공급자의 실제 응답에 따른다.
+completed = TODAY if NOW.hour >= 20 else TODAY - timedelta(days=1)
+while completed.weekday() >= 5:
+    completed -= timedelta(days=1)
+END_DATE   = completed.isoformat()
 OUTPUT_CSV = os.path.join(os.path.dirname(os.path.abspath(__file__)), "candles.csv")
 
 
@@ -49,18 +60,29 @@ def fetch(symbols, label):
             if df is None or df.empty:
                 print("없음")
                 continue
+            skipped = 0
+            before_count = len(rows)
             for date, r in df.iterrows():
-                ts = int(datetime.strptime(str(date.date()), "%Y-%m-%d").timestamp() * 1000)
+                try:
+                    prices = [int(r[name]) for name in ("Open", "High", "Low", "Close", "Volume")]
+                except (KeyError, ValueError, TypeError, OverflowError):
+                    skipped += 1
+                    continue
+                op, high, low, close, volume = prices
+                if min(op, high, low, close) <= 0 or high < max(op, low, close) or low > min(op, close) or volume < 0:
+                    skipped += 1
+                    continue
+                ts = int(datetime.strptime(str(date.date()), "%Y-%m-%d").replace(tzinfo=KST).timestamp() * 1000)
                 rows.append({
                     "symbol":      sym,
                     "timestamp":   ts,
-                    "open_price":  int(r.get("Open",   0)),
-                    "high_price":  int(r.get("High",   0)),
-                    "low_price":   int(r.get("Low",    0)),
-                    "close_price": int(r.get("Close",  0)),
-                    "volume":      int(r.get("Volume", 0)),
+                    "open_price":  op,
+                    "high_price":  high,
+                    "low_price":   low,
+                    "close_price": close,
+                    "volume":      volume,
                 })
-            print(f"{len(df)}개")
+            print(f"{len(rows) - before_count}개 (잘못된 OHLCV {skipped}개 제외)")
             time.sleep(0.15)
         except Exception as e:
             print(f"에러: {e}")

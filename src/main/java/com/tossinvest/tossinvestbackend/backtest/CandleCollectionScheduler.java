@@ -9,16 +9,16 @@ import java.util.List;
 
 /**
  * 백테스트용 캔들 데이터를 매일 자동 갱신하는 스케줄러.
- * 항상 "오늘-1 기준 최근 ROLLING_WINDOW_DAYS 영업일" 데이터를 유지한다.
- * (CandleCollectionService의 개수 기준 스킵 문제로 특정 날짜에서 멈추던 것을 방지)
+ * 한국 날짜 기준 최대 달력 3년의 이력을 보관하며 최신 확정 일봉을 병합한다.
+ * 공급자가 과거 페이지를 제공하지 않는 경우 실제 저장 범위는 더 짧을 수 있다.
  */
 @Component
 @RequiredArgsConstructor
 @Slf4j
 public class CandleCollectionScheduler {
 
-    /** 롤링 윈도우 크기 (영업일 기준). 그리드서치/백테스트 최소 요구치(MIN_CANDLES=100)보다 넉넉하게 유지. */
-    private static final int ROLLING_WINDOW_DAYS = 200;
+    /** 거래일 수보다 큰 목표를 주어 3년 날짜 경계 또는 공급자의 마지막 페이지까지 수집한다. */
+    private static final int HISTORY_TARGET_DAYS = CandleDataPolicy.RETENTION_YEARS * 366;
 
     private final CandleCollectionService collectionService;
     private final BacktestUniverse universe;
@@ -29,12 +29,13 @@ public class CandleCollectionScheduler {
      */
     @Scheduled(cron = "0 0 21 * * MON-FRI", zone = "Asia/Seoul")
     public void refreshDailyCandles() {
+        collectionService.pruneExpiredCandles();
         List<String> symbols = universe.all();
-        log.info("[캔들 자동갱신] 시작: 대상 {}종목, 윈도우 {}영업일", symbols.size(), ROLLING_WINDOW_DAYS);
+        log.info("[캔들 자동갱신] 시작: 대상 {}종목, 최대 달력 {}년 보관", symbols.size(), CandleDataPolicy.RETENTION_YEARS);
         int totalNew = 0;
         for (String symbol : symbols) {
             try {
-                totalNew += collectionService.collectDailyCandles(symbol, ROLLING_WINDOW_DAYS);
+                totalNew += collectionService.collectDailyCandles(symbol, HISTORY_TARGET_DAYS);
             } catch (Exception e) {
                 log.error("[캔들 자동갱신] {} 실패: {}", symbol, e.getMessage(), e);
             }
@@ -44,11 +45,12 @@ public class CandleCollectionScheduler {
 
     /** 수동 트리거용 (컨트롤러 등에서 호출). 종목 하나 실패해도 나머지는 계속 진행된다. */
     public int runManual() {
+        collectionService.pruneExpiredCandles();
         List<String> symbols = universe.all();
         int totalNew = 0;
         for (String symbol : symbols) {
             try {
-                totalNew += collectionService.collectDailyCandles(symbol, ROLLING_WINDOW_DAYS);
+                totalNew += collectionService.collectDailyCandles(symbol, HISTORY_TARGET_DAYS);
             } catch (Exception e) {
                 log.error("[캔들 수동갱신] {} 실패: {}", symbol, e.getMessage(), e);
             }

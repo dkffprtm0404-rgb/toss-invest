@@ -62,7 +62,7 @@
         this.draft.composition.exitConfirmed = false;
       }
       if (this.draft?.portfolio) this.draft.schemaVersion = 3;
-      const extended = ['RANGE_BREAKOUT', 'MA_COMPARE', 'PRICE_MA', 'MA_TREND', 'RANGE_RATIO', 'ATR_BREAKOUT'];
+      const extended = ['RANGE_BREAKOUT', 'MA_COMPARE', 'PRICE_MA', 'MA_TREND', 'RANGE_RATIO', 'ATR_BREAKOUT', 'MACD', 'BOLLINGER'];
       const conditions = [...(this.draft?.entry?.conditions || []), ...(this.draft?.exit?.conditions || [])];
       if (this.draft?.schemaVersion === 1 && (conditions.some(c => extended.includes(c?.type) || ['GT', 'LT'].includes(c?.comparison))
           || this.draft.risk?.trailingStop || this.draft.risk?.atrStop)) this.draft.schemaVersion = 2;
@@ -368,7 +368,8 @@
   const peakBases = [['CLOSE', '진입 후 최고 종가'], ['HIGH', '진입 후 일중 최고가']];
   const types = [['MA_CROSS', '이동평균 교차'], ['RSI', 'RSI'], ['VOLUME', '거래량'],
     ['RANGE_BREAKOUT', '기간 고가·저가 돌파'], ['MA_COMPARE', '이동평균 위치 비교'], ['PRICE_MA', '종가와 이동평균 비교'],
-    ['MA_TREND', '이동평균 기간 추세'], ['RANGE_RATIO', '기간 고가·저가 대비 비율'], ['ATR_BREAKOUT', 'ATR 변동성 돌파']];
+    ['MA_TREND', '이동평균 기간 추세'], ['RANGE_RATIO', '기간 고가·저가 대비 비율'], ['ATR_BREAKOUT', 'ATR 변동성 돌파'],
+    ['MACD', 'MACD 선·시그널·히스토그램'], ['BOLLINGER', '볼린저밴드 종가 비교']];
   function number(value) { return value.trim() === '' || !Number.isFinite(Number(value)) ? null : Number(value); }
   function editField(parent, label, obj, key, choices, percent = false) {
     field(parent, label, percent ? rateToPercent(obj[key]) : obj[key], value => {
@@ -411,6 +412,21 @@
       editField(row, 'ATR 돌파 기간 (봉)', condition, 'period'); editField(row, 'ATR 돌파 배수', condition, 'multiplier');
       editField(row, '비교 방식', condition, 'comparison', extendedComparisons);
       row.append(node('p','종가와 전일 종가 + 배수 × 전일 ATR을 비교합니다.','sw-muted'));
+    } else if (condition?.type === 'MACD') {
+      editField(row, 'MACD 단기 EMA 기간 (봉)', condition, 'fastPeriod');
+      editField(row, 'MACD 장기 EMA 기간 (봉)', condition, 'slowPeriod');
+      editField(row, 'MACD 시그널 EMA 기간 (봉)', condition, 'signalPeriod');
+      editField(row, 'MACD 값', condition, 'value', [['LINE','MACD선'],['SIGNAL','시그널선'],['HISTOGRAM','히스토그램']]);
+      editField(row, 'MACD 비교 대상', condition, 'reference', [['THRESHOLD','숫자 기준'],['SIGNAL','시그널선 (MACD선과 비교)']]);
+      editField(row, 'MACD 숫자 기준 (시그널 비교 시 비움)', condition, 'threshold');
+      editField(row, '비교 방식', condition, 'comparison', extendedComparisons);
+      row.append(node('p','MACD선 = 단기 EMA − 장기 EMA. 시그널 비교에는 MACD선을 선택하고 숫자 기준을 비워 주세요. 기간과 기준값을 자동으로 채우지 않습니다.','sw-muted'));
+    } else if (condition?.type === 'BOLLINGER') {
+      editField(row, '볼린저 기간 (봉)', condition, 'period');
+      editField(row, '볼린저 표준편차 배수', condition, 'multiplier');
+      editField(row, '볼린저 비교 밴드', condition, 'band', [['UPPER','상단'],['MIDDLE','중단 (SMA)'],['LOWER','하단']]);
+      editField(row, '비교 방식', condition, 'comparison', extendedComparisons);
+      row.append(node('p','현재 종가를 포함한 SMA ± 배수 × 모집단 표준편차의 선택 밴드와 종가를 비교합니다. 중단은 SMA입니다.','sw-muted'));
     }
   }
   function renderGroup(key, title) {
@@ -778,6 +794,12 @@
     if (condition.type === 'MA_TREND') return `${condition.averageType || '?'} ${condition.period ?? '?'}봉 현재 값 ${condition.direction === 'UP' ? '>' : condition.direction === 'DOWN' ? '<' : '(방향 미입력)'} 달력상 ${condition.lookbackMonths ?? '?'}개월 전 값 (휴장일은 이전 최근 거래일)`;
     if (condition.type === 'RANGE_RATIO') return `종가 ${comparison} 직전 ${condition.period ?? '?'}${condition.periodUnit === 'CALENDAR_WEEKS' ? '주' : condition.periodUnit === 'BARS' ? '봉' : '(단위 미입력)'} ${condition.priceField === 'HIGH' ? '최고 고가' : condition.priceField === 'LOW' ? '최저 저가' : '가격 미입력'} × ${condition.multiplier == null ? '?' : rateToPercent(condition.multiplier)}% (당일 제외)`;
     if (condition.type === 'ATR_BREAKOUT') return `종가 ${comparison} 전일 종가 + ${condition.multiplier ?? '?'} × 전일 ATR(${condition.period ?? '?'}, ${condition.method || '?'})`;
+    if (condition.type === 'MACD') {
+      const value = ({LINE:'MACD선',SIGNAL:'시그널선',HISTOGRAM:'히스토그램'})[condition.value] || '값 미입력';
+      const reference = condition.reference === 'SIGNAL' ? '시그널선' : condition.reference === 'THRESHOLD' ? condition.threshold ?? '?' : '비교 대상 미입력';
+      return `MACD EMA ${condition.fastPeriod ?? '?'} / ${condition.slowPeriod ?? '?'}봉 · 시그널 EMA ${condition.signalPeriod ?? '?'}봉 · ${value} ${comparison} ${reference}`;
+    }
+    if (condition.type === 'BOLLINGER') return `볼린저 ${condition.period ?? '?'}봉 · 표준편차 ${condition.multiplier ?? '?'}배 · 종가 ${comparison} ${({UPPER:'상단',MIDDLE:'중단 (SMA)',LOWER:'하단'})[condition.band] || '밴드 미입력'} (현재 종가 포함 · 모집단 표준편차)`;
     return condition.type || '종류 미입력';
   }
   function snapshotRules(parent, strategy) {

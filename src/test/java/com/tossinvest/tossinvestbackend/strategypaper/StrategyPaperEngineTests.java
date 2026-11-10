@@ -15,6 +15,30 @@ class StrategyPaperEngineTests {
     final StrategyJson json=new StrategyJson(new ObjectMapper().findAndRegisterModules());
     final LocalDate start=LocalDate.of(2025,1,2);
 
+    @Test void macdAndBollingerConditionsMatchBacktestAndSurviveCheckpointReplay() throws Exception {
+        for (String condition : List.of(
+                "{\"type\":\"MACD\",\"fastPeriod\":1,\"slowPeriod\":3,\"signalPeriod\":2,\"value\":\"LINE\",\"reference\":\"THRESHOLD\",\"threshold\":0,\"comparison\":\"GTE\"}",
+                "{\"type\":\"BOLLINGER\",\"period\":2,\"multiplier\":1,\"band\":\"UPPER\",\"comparison\":\"GTE\"}")) {
+            var definition = org.junit.jupiter.api.Assertions.assertDoesNotThrow(() -> json.read(
+                    "{\"schemaVersion\":2,\"entry\":{\"conditions\":[" + condition + "]}}", StrategyDefinition.class));
+            var input=bars(1,2,3,5,4,6);
+            var candles=input.stream().map(b->new CandleEntity("005930",b.timestamp(),b.open(),b.high(),b.low(),b.close(),b.volume())).toList();
+            for (var mode : UserStrategyBacktestRequest.ExecutionMode.values()) {
+                var r=request(mode);r.validateStrategy(definition);
+                var s=new PaperState(r.initialCapital(),start);
+                engine.process(definition,r,s,input,Instant.parse("2025-02-01T00:00:00Z"));
+                var backtest=new UserStrategyBacktestEngine(new StrategyEvaluator()).run(new UserStrategyBacktestRequest(
+                        definition,"005930",start,LocalDate.of(2025,1,6),mode),candles);
+                assertThat(s.trades).hasSize(1);
+                assertThat(s.trades.get(0).evidence()).isEqualTo(backtest.openPosition().entry().evidence());
+                assertThat(s.trades.get(0).executionDate()).isEqualTo(UserStrategyBacktestEngine.date(backtest.openPosition().entry().executionBarTimestamp()));
+                var restored=json.stored(json.write(s),PaperState.class);
+                engine.process(definition,r,restored,input,Instant.parse("2025-02-02T00:00:00Z"));
+                assertThat(restored.trades).isEqualTo(s.trades);
+            }
+        }
+    }
+
     @Test void trendTemplateMatchesBacktestAndCheckpointDoesNotDuplicateEntry() throws Exception {
         StrategyDefinition definition;
         try (var input = getClass().getResourceAsStream("/demo/strategy-trend-template.json")) {

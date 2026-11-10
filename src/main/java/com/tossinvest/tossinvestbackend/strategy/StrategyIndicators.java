@@ -1,6 +1,7 @@
 package com.tossinvest.tossinvestbackend.strategy;
 
 import java.math.BigDecimal;
+import java.math.MathContext;
 import java.math.RoundingMode;
 import java.time.Instant;
 import java.time.LocalDate;
@@ -86,6 +87,68 @@ final class StrategyIndicators {
         for (int i = 1; i < bars.size(); i++) {
             if (atr.get(i - 1) != null)
                 result.set(i, bars.get(i - 1).close().add(atr.get(i - 1).multiply(rule.multiplier())));
+        }
+        return result;
+    }
+
+    record MacdSeries(List<BigDecimal> line, List<BigDecimal> signal, List<BigDecimal> histogram) { }
+
+    static MacdSeries macd(List<StrategyBar> bars, Macd rule) {
+        List<BigDecimal> closes = bars.stream().map(StrategyBar::close).toList();
+        List<BigDecimal> fast = preciseEma(closes, rule.fastPeriod());
+        List<BigDecimal> slow = preciseEma(closes, rule.slowPeriod());
+        List<BigDecimal> line = new ArrayList<>(Collections.nCopies(bars.size(), null));
+        for (int i = rule.slowPeriod() - 1; i < bars.size(); i++) line.set(i, fast.get(i).subtract(slow.get(i)));
+        int offset = Math.min(rule.slowPeriod() - 1, bars.size());
+        List<BigDecimal> signalTail = preciseEma(line.subList(offset, line.size()), rule.signalPeriod());
+        List<BigDecimal> signal = new ArrayList<>(Collections.nCopies(bars.size(), null));
+        List<BigDecimal> histogram = new ArrayList<>(Collections.nCopies(bars.size(), null));
+        for (int i = offset; i < bars.size(); i++) {
+            BigDecimal value = signalTail.get(i - offset);
+            signal.set(i, value);
+            if (value != null) histogram.set(i, line.get(i).subtract(value));
+        }
+        return new MacdSeries(line, signal, histogram);
+    }
+
+    /** New indicators retain 12 fractional places; existing SMA/EMA contracts are unchanged. */
+    private static List<BigDecimal> preciseEma(List<BigDecimal> values, int period) {
+        List<BigDecimal> result = new ArrayList<>(Collections.nCopies(values.size(), null));
+        if (values.size() < period) return result;
+        BigDecimal sum = BigDecimal.ZERO;
+        for (int i = 0; i < period; i++) sum = sum.add(values.get(i));
+        BigDecimal previous = divide(sum, period);
+        result.set(period - 1, previous);
+        for (int i = period; i < values.size(); i++) {
+            BigDecimal adjustment = values.get(i).subtract(previous).multiply(BigDecimal.valueOf(2))
+                    .divide(BigDecimal.valueOf(period + 1L), 12, RoundingMode.HALF_UP);
+            previous = previous.add(adjustment);
+            result.set(i, previous);
+        }
+        return result;
+    }
+
+    /** Current-close window, population variance (divide by N), SMA middle band. */
+    static List<BigDecimal> bollinger(List<StrategyBar> bars, Bollinger rule) {
+        List<BigDecimal> result = new ArrayList<>(Collections.nCopies(bars.size(), null));
+        MathContext precision = MathContext.DECIMAL128;
+        for (int i = rule.period() - 1; i < bars.size(); i++) {
+            BigDecimal sum = BigDecimal.ZERO;
+            int from = i - rule.period() + 1;
+            for (int j = from; j <= i; j++) sum = sum.add(bars.get(j).close());
+            BigDecimal mean = sum.divide(BigDecimal.valueOf(rule.period()), precision);
+            BigDecimal value = mean;
+            if (rule.band() != BollingerBand.MIDDLE) {
+                BigDecimal deviations = BigDecimal.ZERO;
+                for (int j = from; j <= i; j++) {
+                    BigDecimal difference = bars.get(j).close().subtract(mean);
+                    deviations = deviations.add(difference.multiply(difference));
+                }
+                BigDecimal deviation = deviations.divide(BigDecimal.valueOf(rule.period()), precision).sqrt(precision);
+                BigDecimal width = deviation.multiply(rule.multiplier());
+                value = rule.band() == BollingerBand.UPPER ? mean.add(width) : mean.subtract(width);
+            }
+            result.set(i, value.setScale(12, RoundingMode.HALF_UP));
         }
         return result;
     }

@@ -82,6 +82,57 @@ class CompositeEngineTests {
         assertThat(result.account().trades()).isEmpty();
     }
 
+    @Test void selectionCalendarWithoutCandlesDoesNotBecomeAZeroReturnPerformance() {
+        var result=engine.run(strategy(leaf("entry",2,Comparison.GT),null,null,selection(1),1,Rebalance.ENTRY_ONLY),
+                request(start,false,null,true),List.of());
+
+        assertNoData(result);
+        assertThat(result.account().selections()).hasSize(1);
+    }
+
+    @Test void selectionWithOnlyIndicatorWarmupCandlesHasNoPeriodData() {
+        var input=bars("A","B");input.removeIf(c->!date(c).isBefore(start));
+        var result=engine.run(strategy(leaf("entry",2,Comparison.GT),null,null,selection(1),1,Rebalance.ENTRY_ONLY),
+                request(start,false,null,true),input);
+
+        assertNoData(result);
+    }
+
+    @Test void otherUniverseMembersCannotSupplyTheSelectedSymbolsMissingPeriodData() {
+        var result=engine.run(strategy(leaf("entry",2,Comparison.GT),null,null,selection(1),1,Rebalance.ENTRY_ONLY),
+                request(start,false,"A",true),bars("B"));
+
+        assertNoData(result);
+    }
+
+    @Test void candlesOutsideTheIncludedTradingCalendarAreNotPeriodObservations() {
+        var input=bars("A");input.removeIf(c->!date(c).isBefore(start));
+        LocalDate excluded=start.plusDays(5);
+        input.add(new CandleEntity("A",excluded.atStartOfDay(UserStrategyBacktestEngineZone.ZONE).toInstant().toEpochMilli(),
+                bd("100"),bd("100"),bd("100"),bd("100"),bd("10000")));
+        var result=engine.run(strategy(leaf("entry",2,Comparison.GT),null,null,selection(1),1,Rebalance.ENTRY_ONLY),
+                request(excluded,false,null,true),input);
+
+        assertNoData(result);
+    }
+
+    @Test void anObservedPeriodWithUnreadySelectionRemainsDifferentFromNoData() {
+        var input=bars("A");input.removeIf(c->!date(c).equals(start));
+        var result=engine.run(strategy(leaf("entry",2,Comparison.GT),null,null,selection(1),1,Rebalance.ENTRY_ONLY),
+                request(start,false,null,true),input);
+
+        assertThat(result.account().status()).isEqualTo("NO_TRADES");
+        assertThat(result.account().equity()).hasSize(1);
+        assertThat(result.account().trades()).isEmpty();
+    }
+
+    void assertNoData(CompositeResult result) {
+        assertThat(result.account().status()).isEqualTo("NO_DATA");
+        assertThat(result.account().equity()).isEmpty();
+        assertThat(result.account().trades()).isEmpty();
+        assertThat(result.account().cash()).isEqualByComparingTo("1000");
+    }
+
     @Test void integerCostsAndNoForcedLiquidation() {
         var req=new CompositeRequest(1,start,start,SAME_DAY_CLOSE,bd("1000"),bd("0.01"),bd("0.02"),bd("0.1"),"A",null);
         var result=engine.run(strategy(leaf("entry",2,Comparison.GT),null,null,null,1,Rebalance.ENTRY_ONLY),req,bars("A"));

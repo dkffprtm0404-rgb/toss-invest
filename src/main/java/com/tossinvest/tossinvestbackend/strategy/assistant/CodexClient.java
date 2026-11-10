@@ -46,6 +46,10 @@ public class CodexClient {
     public String explain(String input) {
         return withSession(true, input, BacktestExplanationService.INSTRUCTIONS, "/codex/backtest-explanation.schema.json");
     }
+    public String summarizeMarket(String input) {
+        return withSession(true,input,com.tossinvest.tossinvestbackend.marketbriefing.MarketBriefingService.INSTRUCTIONS,
+                "/codex/market-briefing.schema.json");
+    }
     public String model() { return model; }
 
     private String withSession(boolean generate, String input, String instructions, String schemaResource) {

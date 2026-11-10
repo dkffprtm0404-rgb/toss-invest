@@ -36,6 +36,17 @@ public class StrategyAssistantService {
             새 가격/이동평균/ATR 조건 comparison은 GT/LT/GTE/LTE/CROSS_ABOVE/CROSS_BELOW를 지원한다.
             ATR_BREAKOUT은 종가와 전일 종가 + multiplier × 전일 ATR(period)를 비교한다. method(SIMPLE/WILDER), period, multiplier, comparison이 필수다.
             ATR 계산 방식이 누락되면 질문하며 임의로 SIMPLE/WILDER를 고르지 않는다. 전일 ATR 사용과 종가 확인 방식을 사용자 입력/보완에서 확인한다.
+            MACD는 단기 EMA - 장기 EMA인 MACD선, MACD선의 EMA 시그널, MACD선 - 시그널인 히스토그램을 지원한다. type=MACD다.
+            fastPeriod, slowPeriod, signalPeriod(각 1~500봉, fastPeriod<slowPeriod), value(LINE/SIGNAL/HISTOGRAM), reference(THRESHOLD/SIGNAL), comparison이 필수다.
+            reference=THRESHOLD는 선택한 value와 숫자 threshold를 비교하며 0과 음수도 유효하다. reference=SIGNAL은 value=LINE, threshold=null로 MACD선과 시그널선을 비교한다.
+            MACD선이 시그널선을 상향/하향 교차하면 각각 LINE, SIGNAL, CROSS_ABOVE/CROSS_BELOW다. 히스토그램이 0 초과는 HISTOGRAM, THRESHOLD, threshold=0, GT다.
+            MACD 기간이 없으면 12/26/9를 자동으로 넣지 않는다. 누락한 fastPeriod/slowPeriod/signalPeriod를 null로 남겨 질문한다. 비교할 선·숫자·방향도 모호하면 질문한다.
+            BOLLINGER는 현재 완성 봉을 포함한 종가 period봉 SMA와 같은 구간 모집단 표준편차로 계산한다. 종가를 SMA ± multiplier × 표준편차인 밴드와 비교한다.
+            type=BOLLINGER, period(1~500봉), 양수 multiplier, band(UPPER/MIDDLE/LOWER), comparison이 필수다. UPPER는 상단, MIDDLE은 SMA 중단, LOWER는 하단이다.
+            MACD와 BOLLINGER comparison은 GT/LT/GTE/LTE/CROSS_ABOVE/CROSS_BELOW를 모두 지원한다. 교차는 전일 값과 전일 기준선도 비교한다.
+            볼린저 기간·배수·밴드가 없으면 null과 보완 질문을 반환한다. 20봉·2배를 기본값으로 넣지 않는다. 중단 비교에도 사용자가 명시한 배수를 보존한다.
+            '볼린저 하단 터치'의 가격 기준이 모호하면 종가 확인인지 장중 저가인지 질문한다. 명시한 장중 저가를 종가로 대체하지 않는다.
+            MACD/BOLLINGER는 schemaVersion=2이며 미지원으로 분류하지 않는다. 다이버전스·밴드폭·스퀴즈·사용자 수식은 이 단순 선/가격 비교로 대체하지 않는다.
             RSI는 SIMPLE만 지원하며 method, period, threshold, comparison(GTE/LTE/CROSS_ABOVE/CROSS_BELOW)이 필요하다.
             거래량은 현재 봉을 제외한 직전 period 봉 평균 대비 multiplier 배수, GTE/LTE만 지원한다.
             entry와 exit는 평면 조건 그룹이다. 복수 조건은 명시된 AND 또는 OR가 필요하다. 중첩 그룹은 지원하지 않는다.

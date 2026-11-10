@@ -12,6 +12,7 @@
   const rate = value => value == null ? '—' : number(Number(value) * 100) + '%';
   const date = value => value == null ? '—' : new Date(value).toLocaleString('ko-KR', { timeZone: 'Asia/Seoul' });
   const reason = value => ({ ENTRY_CONDITIONS: '진입 조건', EXIT_CONDITIONS: '청산 조건', STOP_LOSS: '손절', ATR_STOP_LOSS: 'ATR 손절', TAKE_PROFIT: '익절', TIME_EXIT: '보유 봉 수 초과', TRAILING_STOP: '트레일링 청산', END_OF_DATA: '데이터 종료' })[value] || value || '—';
+  const indicator = value => ({ MACD: 'MACD', BOLLINGER: '볼린저밴드' })[value] || value;
   function pairs(parent, entries) {
     const dl = node('dl', null, 'sw-metrics');
     entries.forEach(([label, value]) => { const entry = node('div'); entry.append(node('dt', label), node('dd', value ?? '—')); dl.append(entry); });
@@ -24,7 +25,7 @@
     if (!fill.evidence?.length) parent.append(node('p', '저장된 조건 근거가 없습니다.', 'sw-muted'));
     (fill.evidence || []).forEach(evidence => {
       const item = node('section', null, 'sr-evidence');
-      item.append(node('h6', `${evidence.type} · ${evidence.path}`));
+      item.append(node('h6', `${indicator(evidence.type)} · ${evidence.path}`));
       pairs(item, [['실제 값', number(evidence.actualValue)], ['기준 값', number(evidence.referenceValue)],
         ['이전 실제 값', number(evidence.previousActualValue)], ['이전 기준 값', number(evidence.previousReferenceValue)],
         ['조건 일치', evidence.matched ? '충족' : '미충족']]);

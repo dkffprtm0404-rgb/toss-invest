@@ -8,6 +8,7 @@
 <link rel="stylesheet" href="/css/strategy-workbench.css?v=20260923-design">
 <link rel="stylesheet" href="/css/strategy-comparison.css?v=20260923-design">
 <link rel="stylesheet" href="/css/strategy-paper.css?v=20260928-1">
+<link rel="stylesheet" href="/css/market-briefing.css?v=20261105-1">
 </head>
 <body>
 <a class="skip-link" href="#main-content">본문 바로가기</a>
@@ -34,6 +35,26 @@
     <h1>투자의 기준을 세우다.</h1>
     <p class="page-description">전략을 기록하고, 결과를 확인하고, 내 계좌를 살펴보세요.</p>
   </div>
+
+  <section id="marketBriefing" class="market-briefing" aria-labelledby="marketBriefingTitle">
+    <div class="mb-heading">
+      <div>
+        <h2 id="marketBriefingTitle">장전 AI 시장 요약</h2>
+        <p class="mb-schedule">매 거래일 오전 08:30 · 한국시간</p>
+      </div>
+      <div class="mb-actions">
+        <button type="button" id="marketBriefingRefresh">저장본 새로고침</button>
+        <button type="button" id="marketBriefingGenerate">오늘 브리핑 생성</button>
+      </div>
+    </div>
+    <div class="mb-caption">
+      <p class="mb-date" id="marketBriefingDate">기준일 확인 중…</p>
+      <span class="mb-badge" id="marketBriefingBadge">조회 대기</span>
+    </div>
+    <p id="marketBriefingStatus" class="mb-status" role="status" aria-live="polite">저장된 브리핑을 불러오는 중…</p>
+    <div id="marketBriefingContent" class="mb-content"></div>
+    <noscript>시장 요약을 확인하려면 JavaScript를 활성화해 주세요.</noscript>
+  </section>
 
   <div class="dashboard-tabs" role="tablist" aria-label="대시보드 화면">
     <button type="button" id="strategyTab" role="tab" aria-controls="strategyPanel" aria-selected="true">투자 전략</button>
@@ -259,6 +280,7 @@
 </footer>
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.js"></script>
+<script src="/js/market-briefing.js?v=20261105-1"></script>
 <script src="/js/dashboard.js?v=20261012-paper-fixes"></script>
 <script src="/js/strategy-results.js?v=20260914-1"></script>
 <script src="/js/strategy-comparison.js?v=20260923-ux"></script>
