@@ -44,6 +44,12 @@ test('browser completes explicit save and run flow, locks edits, preserves missi
       else if (url.pathname === '/api/strategies' && req.method() === 'POST') { hasSaved = true; saved.strategy = body; data = saved; }
       else if (url.pathname === '/api/strategies') data = hasSaved ? [saved] : [];
       else if (url.pathname.endsWith('/versions')) data = [saved];
+      else if (url.pathname.endsWith('/data-readiness')) data = { status: 'PARTIAL', symbol: url.searchParams.get('symbol'),
+        startDate: url.searchParams.get('startDate'), endDate: url.searchParams.get('endDate'), totalCandleCount: 40,
+        availableStartDate: '2024-12-01', availableEndDate: '2025-01-31', candleCount: 20,
+        actualStartDate: '2025-01-02', actualEndDate: '2025-01-31', warmupBars: 20, requiredWarmupBars: 20,
+        calendarBasedWarmup: false, firstReadyDate: '2025-01-02', readyCandleCount: 20, invalidDataDate: null,
+        warnings: ['END_OUTSIDE_CACHE', 'ENTRY_READINESS_ONLY', 'TRADING_CALENDAR_NOT_CHECKED', 'CACHE_CAN_CHANGE'] };
       else if (url.pathname.endsWith('/backtests') && req.method() === 'POST') { hasRun = true; data = run; }
       else if (url.pathname.endsWith('/backtests')) data = hasRun ? [{ id: 12, version: 1, status: 'NO_DATA', createdAt: run.createdAt }] : [];
       else if (url.pathname === '/api/backtest/runs/12') data = run;
@@ -77,6 +83,8 @@ test('browser completes explicit save and run flow, locks edits, preserves missi
     await page.getByLabel('시작일', { exact: true }).fill('2025-01-01');
     await page.getByLabel('종료일', { exact: true }).fill('2025-12-31');
     await page.getByLabel('체결 방식', { exact: true }).selectOption('NEXT_DAY_OPEN');
+    await page.getByRole('button', { name: '데이터 준비 상태 확인', exact: true }).click();
+    await page.getByLabel('저장 데이터 현황과 주의사항을 확인했습니다.', { exact: true }).check();
     await page.getByRole('button', { name: '선택 버전 백테스트 실행', exact: true }).click();
     await page.getByRole('heading', { name: '실행 #12 · 데이터 없음', exact: true }).waitFor();
     const execution = requests.find(r => r.path === '/api/strategies/7/backtests' && r.method === 'POST');

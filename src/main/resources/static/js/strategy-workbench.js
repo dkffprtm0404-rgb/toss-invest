@@ -133,7 +133,31 @@
     return {firstDate,lastDate,days:dates.length,
       rangeDiffers:!!dates.length && (firstDate !== snapshot.execution?.startDate || lastDate !== snapshot.execution?.endDate),unready};
   }
-  if (typeof module !== 'undefined' && module.exports) module.exports = { percentToRate, rateToPercent, splitSavedPrompt, DraftState, DraftCollection, executionCoverage };
+  function supportsReadiness(saved) {
+    return !!saved && [1, 2].includes(saved.strategy?.schemaVersion) && !saved.strategy.portfolio && !saved.strategy.composition;
+  }
+  class DataReadinessState {
+    constructor() { this.sequence = 0; this.invalidate(); }
+    invalidate() {
+      this.sequence++; this.key = null; this.phase = 'idle'; this.data = null; this.error = ''; this.confirmed = false;
+    }
+    begin(key) {
+      this.invalidate(); this.key = key; this.phase = 'loading'; return this.sequence;
+    }
+    current(token, key) { return token === this.sequence && key === this.key; }
+    resolve(token, key, data) {
+      if (!this.current(token, key)) return false;
+      this.phase = 'loaded'; this.data = data; this.confirmed = false; return true;
+    }
+    reject(token, key, message) {
+      if (!this.current(token, key)) return false;
+      this.phase = 'error'; this.data = null; this.error = message; this.confirmed = false; return true;
+    }
+    canRun(key) {
+      return key === this.key && this.phase === 'loaded' && this.confirmed && ['READY', 'PARTIAL'].includes(this.data?.status);
+    }
+  }
+  if (typeof module !== 'undefined' && module.exports) module.exports = { percentToRate, rateToPercent, splitSavedPrompt, DraftState, DraftCollection, executionCoverage, supportsReadiness, DataReadinessState };
   if (typeof document === 'undefined') return;
   const root = document.getElementById('strategyWorkbench');
   if (!root) return;
@@ -142,6 +166,7 @@
   const drafts = new DraftCollection();
   let working = false;
   let selected = null;
+  const readiness = new DataReadinessState();
   let displayedRunId = null;
   let strategyPage = 0, versionPage = 0, runPage = 0;
   let assistantReady = false;
@@ -303,7 +328,8 @@
     confirm.checked = state.confirmed;
     confirm.disabled = !state.canConfirm() || state.busy;
     saveNew.disabled = !state.canSave(); saveVersion.disabled = !state.canSave() || !selected;
-    runButton.disabled = !selected || state.busy;
+    runButton.disabled = !selected || state.busy || (supportsReadiness(selected) && !readiness.canRun(readinessKey()));
+    syncReadinessControls();
     const compositeMode = !!selected?.strategy?.composition;
     const portfolioMode = !!selected?.strategy?.portfolio || compositeMode;
     portfolioFields.hidden = !portfolioMode;
@@ -334,6 +360,7 @@
   }
   function clearSelection() {
     selected = null; displayedRunId = null; selection.textContent = '선택한 전략 없음';
+    invalidateReadiness();
     runTarget.textContent = '저장된 전략과 버전을 먼저 선택하세요.';
     versions.replaceChildren(); versionMore.hidden = true;
     runList.replaceChildren(); runMore.hidden = true; resultArea.replaceChildren();
@@ -689,6 +716,7 @@
     await loadVersions(false); await loadRuns(false);
   }
   function showSelection(saved) {
+    invalidateReadiness();
     selection.textContent = `선택: ${saved.strategy.name || '이름 없음'} · 전략 #${saved.id} / 버전 ${saved.version}`;
     runTarget.textContent = `실행 대상: 전략 #${saved.id}, 저장된 버전 ${saved.version} (편집 중인 초안은 실행되지 않습니다.)`;
   }
@@ -705,10 +733,10 @@
   const run = block('4. 백테스트 실행');
   const runTarget = node('p', '저장된 전략과 버전을 먼저 선택하세요.', 'sw-selection');
   const runFields = node('div', null, 'sw-condition');
-  const symbol = field(runFields, '종목 코드', '', () => {}, { placeholder: '예: 005930', maxLength: 32 });
-  const start = field(runFields, '시작일', '', () => {}, { type: 'date' });
-  const end = field(runFields, '종료일', '', () => {}, { type: 'date' });
-  const mode = field(runFields, '체결 방식', '', () => {}, { choices: [['SAME_DAY_CLOSE', '신호 당일 종가'], ['NEXT_DAY_OPEN', '신호 다음 거래일 시가']] });
+  const symbol = field(runFields, '종목 코드', '', invalidateReadiness, { placeholder: '예: 005930', maxLength: 32 });
+  const start = field(runFields, '시작일', '', invalidateReadiness, { type: 'date' });
+  const end = field(runFields, '종료일', '', invalidateReadiness, { type: 'date' });
+  const mode = field(runFields, '체결 방식', '', invalidateReadiness, { choices: [['SAME_DAY_CLOSE', '신호 당일 종가'], ['NEXT_DAY_OPEN', '신호 다음 거래일 시가']] });
   const portfolioFields=node('div',null,'sw-condition');portfolioFields.hidden=true;
   const capital=field(portfolioFields,'초기자금 (원)','',()=>{},{type:'number'});
   const commission=field(portfolioFields,'수수료율 (%)','',()=>{},{type:'number'});
@@ -719,8 +747,120 @@
   const universeFile=field(portfolioFields,'시장 자료 JSON 파일','',()=>{},{type:'file'});universeFile.accept='.json,application/json';
   universeFile.addEventListener('change',()=>operation('시장 자료 읽는 중…',async()=>{const file=universeFile.files[0];if(!file)return;if(file.size>1900000)throw new Error('시장 자료 파일은 1.9MB 이하여야 합니다.');const text=await file.text();JSON.parse(text);universe.value=text;notify('시장 자료를 읽었습니다. 출처와 적용 기간을 확인하세요.');}));
   portfolioFields.append(node('p','tradingDates는 준비 이력부터 종료일 7일 이후까지의 거래일을 오름차순으로 포함해야 합니다. members의 from/to는 해당 시장 편입 시작/종료일이며 to=null은 종료 미정입니다.','sw-muted'));
+  const readinessPanel = node('section', null, 'sw-readiness');
+  readinessPanel.setAttribute('aria-label', '실행 전 데이터 준비 상태');
+  const readinessScope = node('p', '', 'sw-muted');
+  const readinessCheck = button('데이터 준비 상태 확인', loadReadiness);
+  const readinessResult = node('div', null, 'sw-readiness-result');
+  readinessResult.setAttribute('role', 'status'); readinessResult.setAttribute('aria-live', 'polite');
+  const readinessNote = node('p', '저장 데이터 기준 진입 판단 가능 여부이며, 거래일 누락·매도 조건·실제 체결·수익을 보장하지 않습니다.', 'sw-muted');
+  readinessNote.id = 'sw-readiness-note';
+  const readinessReviewLabel = node('label', null, 'sw-check');
+  const readinessReview = node('input'); readinessReview.type = 'checkbox';
+  readinessReview.setAttribute('aria-describedby', readinessNote.id);
+  readinessReview.addEventListener('change', () => { readiness.confirmed = readinessReview.checked; sync(); });
+  readinessReviewLabel.append(readinessReview, node('span', '저장 데이터 현황과 주의사항을 확인했습니다.'));
+  const readinessActions = node('div', null, 'sw-readiness-actions');
+  readinessActions.append(button('기간 수정', () => start.focus()), button('종목 변경', () => symbol.focus()));
+  const readinessHelp = node('details');
+  readinessHelp.append(node('summary', '데이터 준비 방법 보기'),
+    node('p', '프로젝트 README의 캔들 데이터 준비 절차입니다. 필요한 도구와 로컬 서버를 준비한 뒤 프로젝트 폴더에서 직접 진행하세요. 이 화면은 수집하거나 데이터를 변경하지 않습니다.', 'sw-muted'),
+    node('pre', 'python scripts/fetch_candles.py\nInvoke-RestMethod -Method Post -Uri "http://localhost:8090/api/backtest/import-csv"', 'sw-prose'),
+    node('p', '수집은 외부 자료 조회와 CSV 파일 덮어쓰기를 수행합니다. 가져오기는 DB 적재와 보관 기간이 지난 일봉 정리를 수행합니다. 현재 상위 종목의 자료를 수집하므로 모든 종목·기간의 확보를 보장하지 않습니다.', 'sw-muted'));
+  readinessPanel.append(node('h4', '실행 전 데이터 준비 상태'), readinessScope, readinessCheck, readinessResult,
+    readinessNote, readinessReviewLabel, readinessActions, readinessHelp);
+  function readinessKey() {
+    return JSON.stringify([selected?.id, selected?.version, selected?.strategy?.schemaVersion, symbol.value.trim(), start.value, end.value, mode.value]);
+  }
+  function readinessInputsValid() {
+    return supportsReadiness(selected) && /^[A-Za-z0-9]{1,32}$/.test(symbol.value.trim()) && !!start.value && !!end.value
+      && start.value <= end.value && ['SAME_DAY_CLOSE', 'NEXT_DAY_OPEN'].includes(mode.value);
+  }
+  function syncReadinessControls() {
+    const supported = supportsReadiness(selected);
+    readinessScope.textContent = !selected ? '저장된 전략과 버전을 먼저 선택하세요. 이 조회는 단일 종목 저장 전략(형식 1·2)에 적용합니다.'
+      : supported ? '단일 종목 저장 전략(형식 1·2)의 백테스트에 적용합니다. 종목·기간·체결 방식을 입력한 뒤 확인하세요.'
+        : '포트폴리오·조합 전략은 별도 데이터 준비 확인이 필요합니다. 이 화면의 사전 조회 적용 범위는 단일 종목 저장 전략(형식 1·2)입니다.';
+    readinessCheck.hidden = !supported;
+    readinessCheck.disabled = state.busy || !readinessInputsValid() || readiness.phase === 'loading';
+    readinessResult.hidden = !supported; readinessNote.hidden = !supported;
+    readinessActions.hidden = !supported;
+    readinessReviewLabel.hidden = !supported || readiness.phase !== 'loaded' || !['READY', 'PARTIAL'].includes(readiness.data?.status);
+    readinessReview.checked = readiness.confirmed; readinessReview.disabled = state.busy || readinessReviewLabel.hidden;
+  }
+  function invalidateReadiness() {
+    readiness.invalidate(); renderReadiness(); sync();
+  }
+  function renderReadiness() {
+    readinessResult.replaceChildren(); readinessPanel.dataset.state = readiness.phase;
+    readinessResult.setAttribute('aria-busy', String(readiness.phase === 'loading'));
+    if (readiness.phase === 'idle') {
+      readinessResult.append(node('p', '아직 확인하지 않았거나 실행 입력이 변경되었습니다. 현재 조건의 데이터 준비 상태를 다시 확인하세요.', 'sw-muted')); return;
+    }
+    if (readiness.phase === 'loading') {
+      readinessResult.append(node('p', '저장된 일봉을 확인하고 있습니다…', 'sw-muted')); return;
+    }
+    if (readiness.phase === 'error') {
+      readinessResult.append(node('p', '조회 실패 · 준비 상태 미확인', 'sw-error'), node('p', readiness.error, 'sw-error'),
+        node('p', '연결과 입력을 확인한 뒤 데이터 준비 상태 확인 버튼으로 다시 시도하세요. 조회에 실패한 상태에서는 실행할 수 없습니다.', 'sw-muted')); return;
+    }
+    const data = readiness.data, invalid = data.status === 'INVALID_DATA';
+    readinessPanel.dataset.state = data.status;
+    const labels = { READY: '진입 판단 가능', PARTIAL: '일부 구간 확인 필요', NO_DATA: '요청 기간 데이터 없음',
+      INSUFFICIENT_DATA: '지표 준비 이력 부족', INVALID_DATA: '저장 데이터 오류' };
+    readinessResult.append(node('p', labels[data.status], 'sw-readiness-status'));
+    const count = value => value == null ? (invalid ? '계산 불가' : '—') : `${value.toLocaleString('ko-KR')}봉`;
+    const range = (first, last, empty = '없음') => first && last ? `${first} ~ ${last}` : empty;
+    pairs(readinessResult, [['요청 기간', `${data.startDate} ~ ${data.endDate}`], ['종목', data.symbol],
+      ['전체 보유 기간', range(data.availableStartDate, data.availableEndDate)], ['전체 저장 봉 수', count(data.totalCandleCount)],
+      ['요청 구간 보유 기간', range(data.actualStartDate, data.actualEndDate, invalid ? '계산 불가' : '없음')], ['요청 구간 봉 수', count(data.candleCount)],
+      ['시작 전 준비 봉 수', count(data.warmupBars)], ['필요 준비 봉 수', invalid ? '계산 불가' : data.calendarBasedWarmup ? '달력 기준 · 고정 봉 수로 표시할 수 없음' : count(data.requiredWarmupBars)],
+      ['최초 진입 판단 가능일', data.firstReadyDate || (invalid ? '계산 불가' : '없음')], ['진입 판단 가능 봉 수', count(data.readyCandleCount)]]);
+    if (data.invalidDataDate) readinessResult.append(node('p', `오류 데이터 일자: ${data.invalidDataDate}`, 'sw-error'));
+    const guidance = { READY: '현황과 주의사항을 확인하면 선택 버전으로 백테스트를 실행할 수 있습니다.',
+      PARTIAL: '일부 봉의 지표가 준비되지 않았거나 요청 날짜가 보유 범위를 벗어납니다. 범위와 최초 판단 가능일을 확인한 뒤 실행하거나 기간·종목을 수정하세요.',
+      NO_DATA: '요청 기간에 사용할 일봉이 없습니다. 보유 기간과 요청 기간을 비교하고 기간·종목을 수정하거나 데이터 준비 방법을 확인하세요.',
+      INSUFFICIENT_DATA: '진입 판단에 필요한 과거 이력이 부족합니다. 시작일을 뒤로 조정하거나 이력이 있는 종목을 선택하고, 필요한 자료를 준비한 뒤 다시 확인하세요.',
+      INVALID_DATA: '저장 자료의 오류로 준비 상태를 계산하지 못했습니다. 문제가 있는 자료를 점검하고 기간·종목을 확인한 뒤 다시 조회하세요.' };
+    readinessResult.append(node('p', guidance[data.status], 'sw-muted'));
+    const warningLabels = {
+      START_OUTSIDE_CACHE: '요청 시작일이 전체 보유 기간을 벗어납니다. 휴장일인지 데이터 누락인지는 판단하지 않습니다.',
+      END_OUTSIDE_CACHE: '요청 종료일이 전체 보유 기간을 벗어납니다. 휴장일인지 데이터 누락인지는 판단하지 않습니다.',
+      CALENDAR_WARMUP: '달력 기준 지표는 해당 과거 날짜의 이력으로 준비 여부를 판단하며 필요 이력을 고정 봉 수로 환산하지 않습니다.',
+      CACHE_CAN_CHANGE: '저장 자료는 조회 이후 바뀔 수 있습니다. 실제 실행 결과는 실행 시점의 데이터로 계산합니다.'
+    };
+    const warnings = [...new Set(data.warnings)].filter(code => warningLabels[code]);
+    if (warnings.length) { const list = node('ul'); warnings.forEach(code => list.append(node('li', warningLabels[code]))); readinessResult.append(list); }
+  }
+  function validReadinessResponse(data, request) {
+    if (!data || !['READY', 'PARTIAL', 'NO_DATA', 'INSUFFICIENT_DATA', 'INVALID_DATA'].includes(data.status)
+        || data.symbol !== request.symbol || data.startDate !== request.startDate || data.endDate !== request.endDate
+        || typeof data.calendarBasedWarmup !== 'boolean' || !Array.isArray(data.warnings) || data.warnings.some(code => typeof code !== 'string')) return false;
+    const integer = value => Number.isSafeInteger(value) && value >= 0, invalid = data.status === 'INVALID_DATA';
+    if (!integer(data.totalCandleCount)) return false;
+    if (['candleCount', 'warmupBars', 'readyCandleCount'].some(key => !(integer(data[key]) || invalid && data[key] === null))) return false;
+    if (!(integer(data.requiredWarmupBars) || data.requiredWarmupBars === null && (invalid || data.calendarBasedWarmup))) return false;
+    return ['availableStartDate', 'availableEndDate', 'actualStartDate', 'actualEndDate', 'firstReadyDate', 'invalidDataDate']
+      .every(key => data[key] === null || typeof data[key] === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(data[key]));
+  }
+  async function loadReadiness() {
+    if (state.busy || !readinessInputsValid()) return;
+    const key = readinessKey(), token = readiness.begin(key), id = selected.id;
+    const request = { version: selected.version, symbol: symbol.value.trim(), startDate: start.value, endDate: end.value, executionMode: mode.value };
+    renderReadiness(); sync();
+    try {
+      const data = await api(`/api/strategies/${id}/data-readiness?${new URLSearchParams(request)}`);
+      if (key !== readinessKey() || !readiness.current(token, key)) return;
+      if (!validReadinessResponse(data, request)) throw new Error('데이터 준비 상태 응답을 확인할 수 없습니다. 다시 시도해 주세요.');
+      readiness.resolve(token, key, data);
+    } catch {
+      if (key !== readinessKey() || !readiness.reject(token, key, '서버 연결, 선택한 저장 전략·버전, 종목 코드·기간·체결 방식을 확인해 주세요.')) return;
+    }
+    renderReadiness(); sync();
+  }
   const runButton = button('선택 버전 백테스트 실행', () => operation('저장된 버전으로 백테스트 실행 중…', async () => {
     if (!selected) throw new Error('저장된 전략을 선택하세요.');
+    if (supportsReadiness(selected) && !readiness.canRun(readinessKey())) throw new Error('현재 실행 입력의 데이터 준비 상태와 주의사항을 먼저 확인하세요.');
     const isComposite=!!selected.strategy.composition;
     const isPortfolio=!!selected.strategy.portfolio || isComposite;
     const needsUniverse=!!selected.strategy.portfolio || !!selected.strategy.composition?.selection;
@@ -738,7 +878,8 @@
     const result = await api(`/api/strategies/${selected.id}/${isComposite?'composite-backtests':isPortfolio?'portfolio-backtests':'backtests'}`, 'POST', body);
     renderResult(result); await loadRuns(false); notify(`실행 #${result.id} 결과가 저장되었습니다. 상태: ${statusLabel(result.status)}`);
   }), 'sw-primary');
-  run.append(runTarget, runFields, portfolioFields, node('p', '저장한 조건과 로컬 일봉 데이터로 계산하며 AI 토큰을 사용하지 않습니다. 필요한 이력 데이터가 없으면 거래가 없거나 실행이 제한될 수 있습니다.', 'sw-muted'), runButton);
+  renderReadiness();
+  run.append(runTarget, runFields, portfolioFields, readinessPanel, node('p', '저장한 조건과 로컬 일봉 데이터로 계산하며 AI 토큰을 사용하지 않습니다. 필요한 이력 데이터가 없으면 거래가 없거나 실행이 제한될 수 있습니다.', 'sw-muted'), runButton);
   const results = block('5. 결과와 실행 이력');
   const resultCaution=node('p', '아래 수치는 청산된 거래 단위 통계입니다. 초기 자금·포지션 크기·수수료·세금·슬리피지를 적용하지 않아 계좌 수익률과 다릅니다.', 'sw-caution');results.append(resultCaution);
   const resultArea = node('div');

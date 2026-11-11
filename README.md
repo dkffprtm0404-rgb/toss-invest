@@ -236,6 +236,8 @@ Invoke-RestMethod -Method Post -Uri "http://localhost:8090/api/backtest/import-c
 
 화면에서 해석된 조건을 확인하고 전략을 저장한 다음 종목·기간·체결 방식을 선택합니다. 필요한 캔들이 없다면 데이터를 준비한 뒤 다시 실행합니다.
 
+단일 종목 저장 전략(형식 1·2)의 백테스트에는 [실행 전 데이터 준비 사전 점검](.docs/data-readiness.md)을 추가합니다. 요청 기간·저장 범위·봉 수와 진입 판단 준비 여부를 구분하며, 점검 조회는 데이터를 수집하거나 실행 이력을 저장하지 않습니다.
+
 <a id="verification"></a>
 ## 검증
 
@@ -283,6 +285,7 @@ Java나 Node 모듈 위치를 직접 지정해야 하는 경우:
 | 비교 | `POST /api/comparisons` | 같은 유형의 전략 비교 |
 | 전략별 모의매매 | `POST /api/strategy-paper/runs`, `POST /api/strategy-paper/runs/{id}/refresh` | 가상 계좌 생성·갱신 |
 | 캔들 | `POST /api/backtest/import-csv`, `GET /api/backtest/candle-status` | CSV 가져오기·저장 현황 |
+| 실행 전 데이터 준비 | `GET /api/strategies/{id}/data-readiness` | 저장 버전과 요청 기간의 진입 판단 준비 여부 조회 |
 
 자연어 지원 API의 변경 요청에는 로컬·동일 출처 검사와 `X-Strategy-Local: 1` 헤더가 적용됩니다. 요청 본문과 오류 응답은 아래 기능별 명세를 참고하세요.
 

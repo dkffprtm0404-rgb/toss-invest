@@ -135,3 +135,49 @@ test('validation errors and busy state block saving even after confirmation', ()
   state.validate({ ready: false, issues: [{ path: 'entry', message: '누락' }] });
   assert.equal(state.canSave(), false);
 });
+
+test('readiness permits only reviewed READY or PARTIAL results for the current execution input', () => {
+  for (const status of ['READY', 'PARTIAL', 'NO_DATA', 'INSUFFICIENT_DATA', 'INVALID_DATA']) {
+    const state = new workbench.DataReadinessState();
+    const token = state.begin('input-A');
+    assert.equal(state.canRun('input-A'), false);
+    state.resolve(token, 'input-A', { status });
+    assert.equal(state.canRun('input-A'), false, 'the user must review the returned status');
+    state.confirmed = true;
+    assert.equal(state.canRun('input-A'), ['READY', 'PARTIAL'].includes(status));
+    assert.equal(state.canRun('input-B'), false);
+    state.invalidate();
+    assert.equal(state.canRun('input-A'), false);
+    assert.equal(state.data, null);
+    assert.equal(state.confirmed, false);
+  }
+});
+
+test('readiness ignores late success and failure, including an A to B to A input change', () => {
+  const state = new workbench.DataReadinessState();
+  const old = state.begin('A');
+  state.invalidate();
+  state.begin('B');
+  state.invalidate();
+  const current = state.begin('A');
+  assert.equal(state.resolve(old, 'A', { status: 'READY' }), false);
+  assert.equal(state.reject(old, 'A', '늦은 실패'), false);
+  assert.equal(state.phase, 'loading');
+  assert.equal(state.resolve(current, 'A', { status: 'PARTIAL' }), true);
+  state.confirmed = true;
+  assert.equal(state.canRun('A'), true);
+  const retry = state.begin('A');
+  assert.equal(state.canRun('A'), false, 'refresh clears the earlier permission immediately');
+  state.reject(retry, 'A', '조회 실패');
+  assert.equal(state.phase, 'error');
+  assert.equal(state.data, null);
+  assert.equal(state.canRun('A'), false);
+});
+
+test('readiness applies only to saved single-symbol schema 1 and 2 strategies', () => {
+  for (const schemaVersion of [1, 2]) assert.equal(workbench.supportsReadiness({ strategy: { schemaVersion } }), true);
+  for (const schemaVersion of [3, 4, null]) assert.equal(workbench.supportsReadiness({ strategy: { schemaVersion } }), false);
+  assert.equal(workbench.supportsReadiness(null), false);
+  assert.equal(workbench.supportsReadiness({ strategy: { schemaVersion: 2, composition: {} } }), false);
+  assert.equal(workbench.supportsReadiness({ strategy: { schemaVersion: 1, portfolio: {} } }), false);
+});

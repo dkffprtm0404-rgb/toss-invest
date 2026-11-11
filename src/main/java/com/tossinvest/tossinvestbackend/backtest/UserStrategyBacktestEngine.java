@@ -3,6 +3,10 @@ package com.tossinvest.tossinvestbackend.backtest;
 import com.tossinvest.tossinvestbackend.strategy.StrategyBar;
 import com.tossinvest.tossinvestbackend.strategy.StrategyEvaluator;
 import com.tossinvest.tossinvestbackend.strategy.StrategyDefinition.PeakBasis;
+import com.tossinvest.tossinvestbackend.strategy.StrategyDefinition.MovingAverageTrend;
+import com.tossinvest.tossinvestbackend.strategy.StrategyDefinition.RangeBreakout;
+import com.tossinvest.tossinvestbackend.strategy.StrategyDefinition.RangeRatio;
+import com.tossinvest.tossinvestbackend.strategy.StrategyDefinition.PeriodUnit;
 import org.springframework.stereotype.Component;
 
 import java.math.BigDecimal;
@@ -24,6 +28,53 @@ public class UserStrategyBacktestEngine {
     private final StrategyEvaluator evaluator;
 
     public UserStrategyBacktestEngine(StrategyEvaluator evaluator) { this.evaluator = evaluator; }
+
+    /** Shares validation and indicator preparation with run(), without evaluating trades or changing data. */
+    public DataReadiness readiness(UserStrategyBacktestRequest request, List<CandleEntity> candles) {
+        request.requireValid();
+        var dates = candles.stream().filter(c -> c != null && c.getTimestamp() != null)
+                .map(c -> date(c.getTimestamp())).toList();
+        LocalDate availableStart = dates.stream().min(LocalDate::compareTo).orElse(null);
+        LocalDate availableEnd = dates.stream().max(LocalDate::compareTo).orElse(null);
+        boolean calendarBased = request.strategy().entry().conditions().stream().anyMatch(c ->
+                c instanceof MovingAverageTrend
+                || c instanceof RangeBreakout breakout && breakout.periodUnit() == PeriodUnit.CALENDAR_WEEKS
+                || c instanceof RangeRatio ratio && ratio.periodUnit() == PeriodUnit.CALENDAR_WEEKS);
+        List<String> warnings = new ArrayList<>(List.of("ENTRY_READINESS_ONLY", "TRADING_CALENDAR_NOT_CHECKED", "CACHE_CAN_CHANGE"));
+        if (calendarBased) warnings.add("CALENDAR_WARMUP");
+        if (availableStart != null && request.startDate().isBefore(availableStart)) warnings.add("START_OUTSIDE_CACHE");
+        if (availableEnd != null && request.endDate().isAfter(availableEnd)) warnings.add("END_OUTSIDE_CACHE");
+        List<StrategyBar> bars;
+        try {
+            bars = validatedBars(request, candles);
+        } catch (DataException error) {
+            return new DataReadiness("INVALID_DATA", request.symbol(), request.startDate(), request.endDate(),
+                    candles.size(), availableStart, availableEnd, null, null, null, null, null, calendarBased,
+                    null, null, error.getTimestamp() == null ? null : date(error.getTimestamp()), warnings);
+        }
+        Evaluation evaluation = evaluator.prepare(request.strategy(), bars);
+        boolean nextOpen = request.executionMode() == NEXT_DAY_OPEN;
+        int first = 0;
+        while (first < bars.size() && date(bars.get(first).timestamp()).isBefore(request.startDate())) first++;
+        int count = bars.size() - first;
+        int readyCount = 0;
+        LocalDate firstReady = null;
+        for (int i = first; i < bars.size(); i++) {
+            if (evaluation.entryReady(i, nextOpen)) {
+                readyCount++;
+                if (firstReady == null) firstReady = date(bars.get(i).timestamp());
+            }
+        }
+        boolean outsideCache = warnings.contains("START_OUTSIDE_CACHE") || warnings.contains("END_OUTSIDE_CACHE");
+        String status = count == 0 ? "NO_DATA" : readyCount == 0 ? "INSUFFICIENT_DATA"
+                : readyCount < count || outsideCache ? "PARTIAL" : "READY";
+        return new DataReadiness(status, request.symbol(), request.startDate(), request.endDate(),
+                candles.size(), availableStart, availableEnd, count,
+                count == 0 ? null : date(bars.get(first).timestamp()),
+                count == 0 ? null : date(bars.get(bars.size() - 1).timestamp()), first,
+                calendarBased ? null : evaluation.requiredWarmupBars(nextOpen), calendarBased,
+                firstReady, readyCount, null, warnings);
+    }
 
     public UserStrategyBacktestResult run(UserStrategyBacktestRequest request, List<CandleEntity> candles) {
         request.requireValid();

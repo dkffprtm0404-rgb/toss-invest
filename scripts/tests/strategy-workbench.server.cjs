@@ -35,6 +35,14 @@ test('real server saves a confirmed draft, runs seeded candles, and reloads immu
     await root.getByLabel('시작일').fill('2025-01-01');
     await root.getByLabel('종료일').fill('2025-03-01');
     await root.getByLabel('체결 방식').selectOption('NEXT_DAY_OPEN');
+    const readinessWait = page.waitForResponse(r => r.request().method() === 'GET' && r.url().includes('/data-readiness?'));
+    await root.getByRole('button', {name:'데이터 준비 상태 확인',exact:true}).click();
+    const readinessResponse = await readinessWait;
+    assert.equal(readinessResponse.status(), 200);
+    const readiness = await readinessResponse.json();
+    assert.ok(['READY', 'PARTIAL'].includes(readiness.status));
+    assert.ok(readiness.readyCandleCount > 0);
+    await root.getByLabel('저장 데이터 현황과 주의사항을 확인했습니다.', {exact:true}).check();
     const responseWait = page.waitForResponse(r => r.request().method()==='POST' && /\/strategies\/\d+\/backtests$/.test(r.url()));
     await root.getByRole('button', {name:'선택 버전 백테스트 실행'}).click();
     const response = await responseWait; assert.equal(response.status(),201);

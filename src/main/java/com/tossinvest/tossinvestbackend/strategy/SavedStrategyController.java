@@ -2,10 +2,15 @@ package com.tossinvest.tossinvestbackend.strategy;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.tossinvest.tossinvestbackend.backtest.SavedBacktestService;
+import com.tossinvest.tossinvestbackend.backtest.DataReadiness;
+import com.tossinvest.tossinvestbackend.backtest.UserStrategyBacktestRequest.ExecutionMode;
+import org.springframework.format.annotation.DateTimeFormat;
+import org.springframework.http.CacheControl;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
 import java.net.URI;
+import java.time.LocalDate;
 import java.util.List;
 
 @RestController
@@ -56,6 +61,15 @@ public class SavedStrategyController {
     @GetMapping("/strategies/{id}/versions/{version}")
     public SavedStrategyService.SavedVersion version(@PathVariable long id, @PathVariable int version) {
         return strategies.version(id, version);
+    }
+
+    @GetMapping("/strategies/{id}/data-readiness")
+    public ResponseEntity<DataReadiness> readiness(@PathVariable long id, @RequestParam Integer version, @RequestParam String symbol,
+                                   @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate startDate,
+                                   @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate endDate,
+                                   @RequestParam ExecutionMode executionMode) {
+        return ResponseEntity.ok().cacheControl(CacheControl.noStore()).body(backtests.readiness(id,
+                new SavedBacktestService.RunRequest(version, symbol, startDate, endDate, executionMode)));
     }
 
     @PostMapping(value = "/strategies/{id}/backtests", consumes = "application/json")

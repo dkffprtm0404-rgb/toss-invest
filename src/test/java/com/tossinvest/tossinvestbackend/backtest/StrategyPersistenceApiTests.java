@@ -46,6 +46,100 @@ class StrategyPersistenceApiTests {
     @BeforeEach
     void seed() { candles.saveAllAndFlush(UserStrategyBacktestEngineTests.candles(100, 100, 94, 93)); }
 
+    @Test void dataReadinessReadsTheSelectedVersionWithoutSavingARunOrChangingCandles() throws Exception {
+        long id = create();
+        long before = candles.count();
+        var result = mapper.readTree(mvc.perform(get("/api/strategies/" + id + "/data-readiness?version=1&symbol=005930"
+                        + "&startDate=2025-01-02&endDate=2025-01-04&executionMode=SAME_DAY_CLOSE"))
+                .andExpect(status().isOk()).andExpect(header().string("Cache-Control", "no-store"))
+                .andReturn().getResponse().getContentAsString());
+        assertThat(result.path("status").asText()).isEqualTo("READY");
+        assertThat(result.path("totalCandleCount").asInt()).isEqualTo(4);
+        assertThat(result.path("candleCount").asInt()).isEqualTo(3);
+        assertThat(result.path("warmupBars").asInt()).isEqualTo(1);
+        assertThat(result.path("firstReadyDate").asText()).isEqualTo("2025-01-02");
+        assertThat(read("/api/strategies/" + id + "/backtests").isEmpty()).isTrue();
+        assertThat(candles.count()).isEqualTo(before);
+        mvc.perform(put("/api/strategies/" + id).contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"expectedVersion\":1,\"strategy\":" + STRATEGY.replace("\"period\":1", "\"period\":10") + "}"))
+                .andExpect(status().isOk());
+        assertThat(read("/api/strategies/" + id + "/data-readiness?version=1&symbol=005930"
+                + "&startDate=2025-01-02&endDate=2025-01-04&executionMode=SAME_DAY_CLOSE").path("status").asText()).isEqualTo("READY");
+        assertThat(read("/api/strategies/" + id + "/data-readiness?version=2&symbol=005930"
+                + "&startDate=2025-01-02&endDate=2025-01-04&executionMode=SAME_DAY_CLOSE").path("status").asText()).isEqualTo("INSUFFICIENT_DATA");
+    }
+
+    @Test void dataReadinessAllowsShortVolumeOrBeforeCalendarWarmupWithoutSideEffects() throws Exception {
+        String calendarRule = """
+                {"type":"RANGE_RATIO","period":52,"periodUnit":"CALENDAR_WEEKS",
+                 "priceField":"HIGH","multiplier":0.75,"comparison":"GTE"}
+                """;
+        String volumeRule = """
+                {"type":"VOLUME","period":1,"multiplier":1,"comparison":"GTE"}
+                """;
+        String definition = """
+                {"schemaVersion":2,"name":"달력 OR 거래량","entry":{"operator":"OR","conditions":[%s]}}
+                """;
+        var saved = mapper.readTree(mvc.perform(post("/api/strategies").contentType(MediaType.APPLICATION_JSON)
+                        .content(definition.formatted(calendarRule)))
+                .andExpect(status().isCreated()).andReturn().getResponse().getContentAsString());
+        long id = saved.path("id").asLong();
+        mvc.perform(put("/api/strategies/" + id).contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"expectedVersion\":1,\"strategy\":" + definition.formatted(calendarRule + "," + volumeRule) + "}"))
+                .andExpect(status().isOk());
+
+        String strategyUrl = "/api/strategies/" + id;
+        long candleCountBefore = candles.count();
+        JsonNode candlesBefore = mapper.valueToTree(candles.findBySymbolOrderByTimestampAsc("005930"));
+        var strategyBefore = read(strategyUrl);
+        var versionsBefore = read(strategyUrl + "/versions");
+        assertThat(read(strategyUrl + "/backtests").isEmpty()).isTrue();
+        String query = "&symbol=005930&startDate=2025-01-02&endDate=2025-01-04&executionMode=SAME_DAY_CLOSE";
+
+        // 1/1~1/4의 네 봉으로는 52주 조건이 준비되지 않는다.
+        var calendarOnly = read(strategyUrl + "/data-readiness?version=1" + query);
+        assertThat(calendarOnly.path("status").asText()).isEqualTo("INSUFFICIENT_DATA");
+        assertThat(calendarOnly.path("calendarBasedWarmup").asBoolean()).isTrue();
+        assertThat(calendarOnly.path("requiredWarmupBars").isNull()).isTrue();
+        assertThat(calendarOnly.path("firstReadyDate").isNull()).isTrue();
+        assertThat(calendarOnly.path("readyCandleCount").asInt()).isZero();
+
+        var result = mapper.readTree(mvc.perform(get(strategyUrl + "/data-readiness?version=2" + query))
+                .andExpect(status().isOk()).andExpect(header().string("Cache-Control", "no-store"))
+                .andReturn().getResponse().getContentAsString());
+        assertThat(result.path("status").asText()).isEqualTo("READY");
+        assertThat(result.path("calendarBasedWarmup").asBoolean()).isTrue();
+        assertThat(result.path("requiredWarmupBars").isNull()).isTrue();
+        assertThat(result.path("firstReadyDate").asText()).isEqualTo("2025-01-02");
+        assertThat(result.path("readyCandleCount").asInt()).isEqualTo(3);
+        assertThat(result.path("totalCandleCount").asInt()).isEqualTo(4);
+        assertThat(result.path("candleCount").asInt()).isEqualTo(3);
+        assertThat(result.path("warmupBars").asInt()).isEqualTo(1);
+        assertThat(read(strategyUrl + "/backtests").isEmpty()).isTrue();
+        assertThat(read(strategyUrl)).isEqualTo(strategyBefore);
+        assertThat(read(strategyUrl + "/versions")).isEqualTo(versionsBefore);
+        assertThat(candles.count()).isEqualTo(candleCountBefore);
+        assertThat(mapper.<JsonNode>valueToTree(candles.findBySymbolOrderByTimestampAsc("005930"))).isEqualTo(candlesBefore);
+    }
+
+    @Test void dataReadinessValidatesTheRequestAndDistinguishesAnEmptySymbolCache() throws Exception {
+        long id = create();
+        String endpoint = "/api/strategies/" + id + "/data-readiness";
+        mvc.perform(get(endpoint).param("version", "0").param("symbol", "005930")
+                        .param("startDate", "2025-01-02").param("endDate", "2025-01-04")
+                        .param("executionMode", "SAME_DAY_CLOSE"))
+                .andExpect(status().isBadRequest());
+        mvc.perform(get(endpoint).param("version", "1").param("symbol", "005930")
+                        .param("startDate", "2025-01-04").param("endDate", "2025-01-02")
+                        .param("executionMode", "SAME_DAY_CLOSE"))
+                .andExpect(status().isBadRequest());
+        var empty = read(endpoint + "?version=1&symbol=000660&startDate=2025-01-02&endDate=2025-01-04&executionMode=SAME_DAY_CLOSE");
+        assertThat(empty.path("status").asText()).isEqualTo("NO_DATA");
+        assertThat(empty.path("totalCandleCount").asInt()).isZero();
+        assertThat(empty.path("availableStartDate").isNull()).isTrue();
+        assertThat(read("/api/strategies/" + id + "/backtests").isEmpty()).isTrue();
+    }
+
     @Test void trendTemplateKeepsAllSixRulesAndEvidenceInSavedVersionAndRun() throws Exception {
         String definition;
         try (var input = getClass().getResourceAsStream("/demo/strategy-trend-template.json")) {

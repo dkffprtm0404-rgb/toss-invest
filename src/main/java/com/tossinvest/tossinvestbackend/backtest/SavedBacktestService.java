@@ -53,6 +53,17 @@ public class SavedBacktestService {
     public record RunDetail(long id, Instant createdAt, String status, Snapshot snapshot) { }
     public record RunSummary(long id, int version, Instant createdAt, String status) { }
 
+    public DataReadiness readiness(long strategyId, RunRequest request) {
+        if (request == null) throw new StrategyJson.InvalidRequestException();
+        SavedStrategyService.requirePositive(request.version(), "version");
+        var strategy = strategies.version(strategyId, request.version());
+        var execution = new UserStrategyBacktestRequest(strategy.strategy(), request.symbol(), request.startDate(),
+                request.endDate(), request.executionMode());
+        execution.requireValid();
+        // Full cache bounds are metadata only: the engine excludes future candles from indicator preparation.
+        return engine.readiness(execution, candles.findBySymbolOrderByTimestampAsc(execution.symbol()));
+    }
+
     @Transactional
     public RunDetail run(long strategyId, RunRequest request) {
         if (request == null) throw new StrategyJson.InvalidRequestException();

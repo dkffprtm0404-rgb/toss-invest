@@ -575,6 +575,57 @@
   grid-column: 1/-1;
 }
 
+#strategyWorkbench .sw-readiness {
+  margin: 20px 0;
+  padding: 16px;
+  min-width: 0;
+  border: 1px solid var(--rule, #dddddd);
+  border-left: 3px solid var(--ink, #191919);
+  background: var(--soft, #f5f5f3);
+}
+
+#strategyWorkbench .sw-readiness h4 {
+  margin-top: 0;
+}
+
+#strategyWorkbench .sw-readiness-status {
+  font-weight: 700;
+}
+
+#strategyWorkbench .sw-readiness[data-state=READY] {
+  border-left-color: #087f63;
+}
+
+#strategyWorkbench .sw-readiness[data-state=PARTIAL],
+#strategyWorkbench .sw-readiness[data-state=INSUFFICIENT_DATA] {
+  border-left-color: #875515;
+}
+
+#strategyWorkbench .sw-readiness[data-state=INVALID_DATA],
+#strategyWorkbench .sw-readiness[data-state=error] {
+  border-left-color: #b42335;
+}
+
+#strategyWorkbench .sw-readiness .sw-metrics {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+#strategyWorkbench .sw-readiness .sw-metrics > div {
+  background: #ffffff;
+}
+
+#strategyWorkbench .sw-readiness-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+#strategyWorkbench .sw-readiness ul {
+  padding-left: 20px;
+  font-size: 13px;
+}
+
 @media (max-width: 700px) {
   #strategyWorkbench input:not([type=checkbox]), #strategyWorkbench select, #strategyWorkbench textarea {
     font-size: 16px;
@@ -622,5 +673,13 @@
 
   #strategyWorkbench .sw-condition, #strategyWorkbench .sw-metrics {
     grid-template-columns: 1fr;
+  }
+
+  #strategyWorkbench .sw-readiness {
+    padding: 12px;
+  }
+
+  #strategyWorkbench .sw-readiness .sw-metrics {
+    grid-template-columns: minmax(0, 1fr);
   }
 }
