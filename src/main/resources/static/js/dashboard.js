@@ -53,6 +53,7 @@ let activeIsHolding = false;
 let activeAvgPrice = null;
 let activeHoldingDays = null;
 let candleChartInstance = null;
+let accountPresentationMode = false;
 
 function tickClock() {
   const now = new Date();
@@ -93,9 +94,24 @@ async function loadExchangeRate() {
   }
 }
 
+function renderAccountPresentation() {
+  if (!accountPresentationMode) return false;
+  els.accountBody.innerHTML = `
+    <div class="account-row"><span class="label">계좌번호</span><span></span></div>
+    <div class="account-row"><span class="label">계좌유형</span><span></span></div>
+    <div class="account-row"><span class="label">accountSeq</span><span></span></div>
+  `;
+  els.totalPurchaseKrw.textContent = '';
+  els.totalPurchaseUsd.textContent = '';
+  els.holdingsBody.innerHTML = '<tr class="presentation-blank-row" aria-hidden="true"><td colspan="5"></td></tr>';
+  return true;
+}
+
 async function loadAccountsAndHoldings() {
+  if (renderAccountPresentation()) return;
   try {
     const accountData = await fetchJson('/api/accounts');
+    if (renderAccountPresentation()) return;
     const accounts = accountData.result || [];
 
     if (accounts.length === 0) {
@@ -113,14 +129,17 @@ async function loadAccountsAndHoldings() {
 
     await loadHoldings(account.accountSeq);
   } catch (err) {
+    if (renderAccountPresentation()) return;
     els.accountBody.innerHTML = `<div class="account-row error-cell">계좌 조회 실패: ${err.message}</div>`;
     els.holdingsBody.innerHTML = '<tr><td colspan="3" class="error-cell">계좌 정보 없이 조회 불가</td></tr>';
   }
 }
 
 async function loadHoldings(accountSeq) {
+  if (renderAccountPresentation()) return;
   try {
     const data = await fetchJson(`/api/holdings?accountSeq=${accountSeq}`);
+    if (renderAccountPresentation()) return;
     const result = data.result;
 
     els.totalPurchaseKrw.textContent = result.totalPurchaseAmount?.krw
@@ -157,6 +176,7 @@ async function loadHoldings(accountSeq) {
     attachRowClickHandlers();
     markActiveRow();
   } catch (err) {
+    if (renderAccountPresentation()) return;
     els.holdingsBody.innerHTML = `<tr><td colspan="5" class="error-cell">보유 종목 조회 실패: ${err.message}</td></tr>`;
   }
 }
@@ -179,6 +199,7 @@ function markActiveRow() {
 }
 
 function openQuotePanel(symbol, name, isHolding, avgPrice) {
+  if (accountPresentationMode && isHolding) return;
   activeSymbol = symbol;
   activeName = name;
   activeIsHolding = !!isHolding;
@@ -206,6 +227,51 @@ function closeQuotePanel() {
 }
 
 els.closeQuoteBtn.addEventListener('click', closeQuotePanel);
+
+(function initAccountVisibility() {
+  const overview = document.getElementById('account-overview');
+  const toggle = document.getElementById('accountVisibilityToggle');
+  const hiddenKey = 'tossinvest.accountDetailsHidden';
+  function setHidden(hidden) {
+    overview.hidden = hidden;
+    toggle.textContent = hidden ? '계좌·보유종목 보기' : '계좌·보유종목 숨기기';
+    toggle.setAttribute('aria-expanded', String(!hidden));
+    if (hidden && activeIsHolding) closeQuotePanel();
+  }
+  let savedHidden = false;
+  try { savedHidden = localStorage.getItem(hiddenKey) === 'true'; } catch { /* Storage can be blocked. */ }
+  setHidden(savedHidden);
+  toggle.addEventListener('click', () => {
+    const hidden = !overview.hidden;
+    setHidden(hidden);
+    try { localStorage.setItem(hiddenKey, String(hidden)); } catch { /* Keep the in-page preference. */ }
+  });
+})();
+
+(function initAccountPresentation() {
+  const toggle = document.getElementById('accountPresentationToggle');
+  const status = document.getElementById('accountPresentationStatus');
+  const presentationKey = 'tossinvest.accountPresentation';
+  function setPresentation(enabled) {
+    accountPresentationMode = enabled;
+    toggle.textContent = enabled ? '실제 데이터 표시' : '발표용 공백 처리';
+    toggle.setAttribute('aria-pressed', String(enabled));
+    status.hidden = !enabled;
+    if (enabled) {
+      closeQuotePanel();
+      els.quoteTitle.textContent = '시세 상세';
+      renderAccountPresentation();
+    }
+  }
+  let savedPresentation = false;
+  try { savedPresentation = localStorage.getItem(presentationKey) === 'true'; } catch { /* Storage can be blocked. */ }
+  setPresentation(savedPresentation);
+  toggle.addEventListener('click', () => {
+    setPresentation(!accountPresentationMode);
+    try { localStorage.setItem(presentationKey, String(accountPresentationMode)); } catch { /* Keep the in-page preference. */ }
+    if (!accountPresentationMode) loadAccountsAndHoldings();
+  });
+})();
 
 async function loadQuoteDetail() {
   if (!activeSymbol) return;

@@ -2,7 +2,8 @@
   'use strict';
   const root = document.getElementById('strategyPaper');
   if (!root) return;
-  let selected = null, busy = false, requestKey = null, requestSignature = null, listPage = 0;
+  let selected = null, busy = false, requestKey = null, requestSignature = null, listPage = 0, selectionSequence = 0;
+  const supportsPaper = saved => !!saved && [1, 2].includes(saved.strategy?.schemaVersion) && !saved.strategy.portfolio && !saved.strategy.composition;
   const statuses = {RUNNING:'실행 중', STOPPING:'청산 관리 중', STOPPED:'종료'};
   const dataStatuses = {WAITING_DATA:'확정 일봉 대기', READY:'처리 완료', INSUFFICIENT_DATA:'지표 준비 데이터 부족', INSUFFICIENT_CASH:'매수 자금 부족', INVALID_DATA:'일봉 데이터 오류', MARKET_REQUEST_REJECTED:'시세 요청 오류', MARKET_AUTH_FAILED:'시세 인증·권한 오류', MARKET_RATE_LIMITED:'시세 호출 한도 초과', MARKET_UNAVAILABLE:'시세 연결·서버 오류', MARKET_ERROR:'일봉 응답 처리 오류'};
   const reasons = {ENTRY_CONDITIONS:'진입 조건 충족', EXIT_CONDITIONS:'청산 조건 충족', STOP_LOSS:'손절', TAKE_PROFIT:'익절', TIME_EXIT:'보유기간 초과', TRAILING_STOP:'추적손절', ATR_STOP_LOSS:'ATR 손절'};
@@ -22,10 +23,11 @@
   async function operation(action) {
     if (busy) return;
     busy = true; root.setAttribute('aria-busy', 'true');
+    const token = selectionSequence;
     const controls = [...root.querySelectorAll('button,input,select')].map(n => [n, n.disabled]);
     controls.forEach(([n]) => { n.disabled = true; });
-    try { await action(); } catch (error) { message(error.message || '요청을 처리하지 못했습니다.', true); }
-    finally { controls.forEach(([n, disabled]) => { n.disabled = disabled; }); busy = false; root.removeAttribute('aria-busy'); }
+    try { await action(); } catch (error) { if (token === selectionSequence) message(error.message || '요청을 처리하지 못했습니다.', true); }
+    finally { controls.forEach(([n, disabled]) => { n.disabled = disabled; }); busy = false; syncStartButton(); root.removeAttribute('aria-busy'); }
   }
   const heading = el('h2', '저장 전략 모의매매');
   const notice = el('p', '저장 전략에서 실행할 버전을 선택해 주세요.', 'sp-notice'); notice.setAttribute('role', 'status');
@@ -51,10 +53,22 @@
   const slippage = input('슬리피지율 (%)', 'slippageRate', {max:25});
   [allocation, commission, tax, slippage].forEach(n => { n.step = '0.00000001'; });
   const startButton = el('button', '모의매매 시작'); startButton.type = 'submit';
+  function syncStartButton() {
+    startButton.disabled = busy || !supportsPaper(selected);
+    startButton.title = !selected ? '저장된 단일 종목 전략(형식 1·2)을 먼저 선택해 주세요.' : busy ? '요청을 처리하고 있습니다.' : '선택한 저장 버전으로 시작합니다.';
+  }
+  function clearSelection() {
+    selectionSequence++; selected = null; requestKey = null; requestSignature = null;
+    target.textContent = '선택된 전략 없음';
+    message('저장된 단일 종목 전략(형식 1·2)과 버전을 선택해 주세요.');
+    syncStartButton();
+  }
+  syncStartButton();
   form.append(target, fields, el('p', '비용을 적용하지 않으려면 0을 입력하세요. 매수 비중은 진입 시 가용 현금에 적용합니다.', 'sp-note'), startButton);
   form.addEventListener('submit', event => {
     event.preventDefault();
-    if (!selected) { message('저장된 단일 종목 전략과 버전을 먼저 선택해 주세요.', true); return; }
+    if (busy) return;
+    if (!supportsPaper(selected)) { clearSelection(); message('저장된 단일 종목 전략(형식 1·2)과 버전을 먼저 선택해 주세요.', true); return; }
     // Capture values before disabling form controls.
     const body = {strategyId:selected.id, version:selected.version, symbol:symbol.value.trim(), executionMode:mode.value,
       initialCapital:Number(capital.value), allocationRate:Number((Number(allocation.value)/100).toFixed(10)), commissionRate:Number((Number(commission.value)/100).toFixed(10)),
@@ -62,7 +76,13 @@
     const signature = JSON.stringify(body);
     if (signature !== requestSignature) { requestKey = [...crypto.getRandomValues(new Uint8Array(16))].map(x => x.toString(16).padStart(2, '0')).join(''); requestSignature = signature; }
     body.requestId = requestKey;
-    operation(async () => { const d = await api('', 'POST', body); render(d); requestSignature = null; await list(false); message(`모의매매 #${d.id}를 시작했습니다. 첫 판단 가능일: ${d.state.firstTradingDate}`); });
+    const token = selectionSequence;
+    operation(async () => {
+      const d = await api('', 'POST', body);
+      if (token !== selectionSequence) return;
+      render(d); requestKey = null; requestSignature = null; await list(false);
+      if (token === selectionSequence) message(`모의매매 #${d.id}를 시작했습니다. 첫 판단 가능일: ${d.state.firstTradingDate}`);
+    });
   });
   const listArea = el('div', null, 'sp-list');
   const detailArea = el('div', null, 'sp-detail');
@@ -124,10 +144,11 @@
       loadMore.hidden=(type==='trades'?d.tradeCount:type==='logs'?d.logCount:d.equityCount)<=20;
     }
   }
-  window.StrategyPaper = {select(saved) {
+  window.StrategyPaper = {clearSelection, select(saved) {
+    clearSelection();
     document.getElementById('accountTab')?.click();root.scrollIntoView({behavior:'smooth',block:'start'});
-    if (saved.strategy.portfolio || saved.strategy.composition || saved.strategy.schemaVersion > 2) {message('현재 단일 종목 전략(형식 1·2)만 지원합니다.',true);return;}
-    selected=structuredClone(saved);requestSignature=null;
+    if (!supportsPaper(saved)) {message('현재 단일 종목 전략(형식 1·2)만 지원합니다. 이전 실행 대상을 해제했습니다. 저장 목록에서 지원 전략을 선택해 주세요.',true);return;}
+    selected=structuredClone(saved);syncStartButton();
     target.textContent=`실행 대상: ${saved.strategy.name || '이름 없음'} · 전략 #${saved.id} / 저장 버전 ${saved.version}`;
     message('실행 종목·자금·비용을 입력해 주세요. 편집 중인 초안은 반영되지 않습니다.');
   }};

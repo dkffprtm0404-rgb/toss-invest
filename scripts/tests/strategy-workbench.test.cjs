@@ -181,3 +181,90 @@ test('readiness applies only to saved single-symbol schema 1 and 2 strategies', 
   assert.equal(workbench.supportsReadiness({ strategy: { schemaVersion: 2, composition: {} } }), false);
   assert.equal(workbench.supportsReadiness({ strategy: { schemaVersion: 1, portfolio: {} } }), false);
 });
+
+function portfolioPreviewInput(changes = {}, universeChanges = {}) {
+  return {
+    startDate:'2026-03-02', endDate:'2026-03-03', executionMode:'NEXT_DAY_OPEN',
+    initialCapital:'1000000', commissionRate:'0', taxRate:'0', slippageRate:'0', symbol:'',
+    universe:JSON.stringify({source:'합성 구조 검사 자료 · 기준일 2026-03-03',
+      tradingDates:['2026-02-27','2026-03-02','2026-03-03','2026-03-11'],
+      members:[{symbol:'005930',market:'KOSPI',from:'2020-01-01',to:null}], ...universeChanges}),
+    ...changes
+  };
+}
+
+test('Korean validation advice identifies fields and the actual period and loss boundaries', () => {
+  const period = workbench.validationIssueText({path:'entry.conditions[0].shortPeriod',code:'INVALID',message:'Period must be between 1 and 500 bars.'}, {});
+  assert.match(period, /단기 기간/); assert.match(period, /entry\.conditions\[0\]\.shortPeriod/); assert.match(period, /1~500/);
+  assert.doesNotMatch(period, /Period must/);
+  const loss = workbench.validationIssueText({path:'risk.stopLoss.rate',code:'INVALID',message:'invalid'}, {});
+  assert.match(loss, /손절/); assert.match(loss, /-100% 초과, 0% 미만/); assert.match(loss, /-0\.05/);
+  const rsi = {entry:{conditions:[{type:'RSI'}]}};
+  assert.match(workbench.validationIssueText({path:'entry.conditions[0].threshold',code:'REQUIRED'}, rsi), /0~100/);
+});
+
+test('MACD signal comparison advice permits LINE and does not offer incompatible values', () => {
+  const issue = {path:'entry.conditions[0].value',code:'REQUIRED'};
+  const signal = workbench.validationIssueText(issue, {entry:{conditions:[{type:'MACD',reference:'SIGNAL'}]}});
+  assert.match(signal, /LINE/); assert.doesNotMatch(signal, /HISTOGRAM|시그널선\(SIGNAL\)/);
+  const threshold = workbench.validationIssueText(issue, {entry:{conditions:[{type:'MACD',reference:'THRESHOLD'}]}});
+  assert.match(threshold, /LINE/); assert.match(threshold, /SIGNAL/); assert.match(threshold, /HISTOGRAM/);
+});
+
+test('valid portfolio preview preserves the supplied source, symbols and JSON without filling defaults', () => {
+  const input = portfolioPreviewInput(), original = input.universe;
+  const preview = workbench.portfolioInputPreview(input);
+  assert.deepEqual(preview.issues, []);
+  assert.deepEqual(preview.summary, {source:'합성 구조 검사 자료 · 기준일 2026-03-03',dates:4,symbols:1});
+  assert.equal(input.universe, original); assert.equal(input.commissionRate, '0'); assert.equal(input.symbol, '');
+});
+
+test('portfolio preview points to missing source and malformed JSON instead of treating them as prepared data', () => {
+  assert.ok(workbench.portfolioInputPreview(portfolioPreviewInput({}, {source:''})).issues.some(i => i.path === 'universe.source'));
+  for (const universe of ['{"source":', '[]', 'null']) {
+    const preview = workbench.portfolioInputPreview(portfolioPreviewInput({universe}));
+    assert.ok(preview.issues.some(i => i.path === 'universe')); assert.equal(preview.summary, null);
+  }
+});
+
+test('portfolio calendar preview rejects duplicates, reversed dates and an end plus seven boundary', () => {
+  for (const tradingDates of [
+    ['2026-02-27','2026-03-02','2026-03-02','2026-03-11'],
+    ['2026-03-02','2026-02-27','2026-03-11'],
+    ['2026-02-30','2026-03-11'],
+    ['2026-02-27','2026-03-02','2026-03-10'],
+    ['2026-03-02','2026-03-11']
+  ]) {
+    assert.ok(workbench.portfolioInputPreview(portfolioPreviewInput({}, {tradingDates})).issues.some(i => i.path.startsWith('universe.tradingDates')));
+  }
+  assert.deepEqual(workbench.portfolioInputPreview(portfolioPreviewInput()).issues, []);
+});
+
+test('portfolio member preview rejects numeric symbols, aggregate markets and inclusive overlapping intervals', () => {
+  const valid = {symbol:'005930',market:'KOSPI',from:'2020-01-01',to:null};
+  for (const [member,field] of [[{...valid,symbol:5930},'symbol'],[{...valid,market:'KOSPI_KOSDAQ'},'market'],
+    [{...valid,from:'2026-02-30'},'from'],[{...valid,to:'2019-12-31'},'to']]) {
+    assert.ok(workbench.portfolioInputPreview(portfolioPreviewInput({}, {members:[member]})).issues.some(i => i.path === `universe.members[0].${field}`));
+  }
+  const members = [{...valid,to:'2026-03-01'},{...valid,from:'2026-03-01'}];
+  assert.ok(workbench.portfolioInputPreview(portfolioPreviewInput({}, {members})).issues.some(i => i.path === 'universe.members[1].from'));
+  members[1].from = '2026-03-02';
+  assert.deepEqual(workbench.portfolioInputPreview(portfolioPreviewInput({}, {members})).issues, []);
+});
+
+test('composition preview checks explicit symbol and cost inputs even without a universe', () => {
+  const options = {needsUniverse:false,symbolRequired:true};
+  const missing = workbench.portfolioInputPreview(portfolioPreviewInput({universe:'',commissionRate:'',taxRate:'-0.1',slippageRate:'25.1'}), options);
+  for (const field of ['symbol','commissionRate','taxRate','slippageRate']) assert.ok(missing.issues.some(i => i.field === field));
+  const valid = workbench.portfolioInputPreview(portfolioPreviewInput({symbol:'005930',universe:''}), options);
+  assert.deepEqual(valid.issues, []); assert.equal(valid.summary, null);
+});
+
+test('portfolio execution date preview follows the ten year leap-day boundary', () => {
+  const options = {needsUniverse:false};
+  assert.deepEqual(workbench.portfolioInputPreview(portfolioPreviewInput({startDate:'2024-02-29',endDate:'2034-02-28'}), options).issues, []);
+  for (const dates of [{startDate:'2024-02-29',endDate:'2034-03-01'}, {startDate:'2026-02-30',endDate:'2026-03-03'},
+    {startDate:'2026-03-03',endDate:'2026-03-02'}]) {
+    assert.ok(workbench.portfolioInputPreview(portfolioPreviewInput(dates), options).issues.some(i => ['startDate','endDate'].includes(i.field)));
+  }
+});

@@ -626,6 +626,47 @@
   font-size: 13px;
 }
 
+#strategyWorkbench .sw-paper-support {
+  flex-basis: 100%;
+  color: var(--ink-dim, #666666);
+  font-size: 12px;
+}
+
+#strategyWorkbench .sw-universe-field,
+#strategyWorkbench .sw-portfolio-help,
+#strategyWorkbench .sw-portfolio-preview {
+  grid-column: 1/-1;
+  min-width: 0;
+}
+
+#strategyWorkbench .sw-portfolio-preview {
+  padding: 12px;
+  border: 1px solid var(--rule, #dddddd);
+  background: var(--soft, #f5f5f3);
+}
+
+#strategyWorkbench .sw-portfolio-preview ul,
+#strategyWorkbench .sw-portfolio-help ul {
+  padding-left: 20px;
+  font-size: 13px;
+}
+
+#strategyWorkbench .sw-portfolio-preview li {
+  margin-bottom: 12px;
+}
+
+#strategyWorkbench .sw-portfolio-preview li button {
+  display: block;
+}
+
+#strategyWorkbench .sw-preview-status {
+  font-weight: 600;
+}
+
+#strategyWorkbench [aria-invalid=true] {
+  border-color: #b42335;
+}
+
 @media (max-width: 700px) {
   #strategyWorkbench input:not([type=checkbox]), #strategyWorkbench select, #strategyWorkbench textarea {
     font-size: 16px;

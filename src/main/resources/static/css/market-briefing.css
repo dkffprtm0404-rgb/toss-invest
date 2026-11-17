@@ -10,13 +10,15 @@
 .mb-heading {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
-  align-items: start;
+  align-items: center;
   gap: 16px;
 }
 .mb-heading h2 { font-size: 21px; font-weight: 750; line-height: 1.4; }
-.mb-schedule { margin: 6px 0 0; color: var(--ink-dim); font-size: 12px; line-height: 1.6; }
+.market-briefing.mb-collapsed { padding: 14px 24px; }
+.mb-toolbar { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px; margin-top: 12px; }
+.mb-schedule { margin: 0; color: var(--ink-dim); font-size: 12px; line-height: 1.6; }
 .mb-actions { display: flex; flex-wrap: wrap; gap: 8px; }
-.mb-actions button {
+.mb-actions button, .mb-toggle {
   padding: 9px 12px;
   border: 1px solid var(--rule);
   background: var(--bg-raised);
@@ -27,9 +29,11 @@
   line-height: 1.5;
   cursor: pointer;
 }
+.mb-toggle { min-height: 44px; min-width: 64px; }
+.mb-toggle:hover { border-color: var(--accent); color: var(--accent); }
 .mb-actions button:last-child { background: var(--ink); border-color: var(--ink); color: var(--bg); }
 .mb-actions button:disabled { opacity: .55; cursor: wait; }
-.mb-actions button:focus-visible, .market-briefing a:focus-visible, .mb-sources summary:focus-visible {
+.mb-actions button:focus-visible, .mb-toggle:focus-visible, .market-briefing a:focus-visible, .mb-sources summary:focus-visible {
   outline: 2px solid var(--accent);
   outline-offset: 3px;
 }
@@ -69,7 +73,8 @@
 .mb-failure { margin: 12px 0 0; font-size: 12px; line-height: 1.7; }
 @media (max-width: 640px) {
   .market-briefing { padding: 18px; margin-bottom: 20px; }
-  .mb-heading { grid-template-columns: minmax(0, 1fr); gap: 12px; }
+  .market-briefing.mb-collapsed { padding: 12px 18px; }
+  .mb-heading { gap: 12px; }
   .mb-heading h2 { font-size: 20px; }
   .mb-actions button { flex: 1; min-width: 0; }
   .mb-quotes { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }

@@ -8,8 +8,26 @@
   const status = document.getElementById('marketBriefingStatus');
   const refresh = document.getElementById('marketBriefingRefresh');
   const generate = document.getElementById('marketBriefingGenerate');
+  const body = document.getElementById('marketBriefingBody');
+  const toggle = document.getElementById('marketBriefingToggle');
+  const collapsedKey = 'tossinvest.marketBriefingCollapsed';
   const labels = { READY: '준비 완료', PARTIAL: '일부 자료 누락', FAILED: '생성 실패', NO_DATA: '자료 없음', CLOSED: '휴장일' };
   let busy = false, generating = false, retry = false;
+
+  function setCollapsed(collapsed) {
+    body.hidden = collapsed;
+    root.classList.toggle('mb-collapsed', collapsed);
+    toggle.textContent = collapsed ? '펼치기' : '접기';
+    toggle.setAttribute('aria-expanded', String(!collapsed));
+  }
+  let savedCollapsed = false;
+  try { savedCollapsed = localStorage.getItem(collapsedKey) === 'true'; } catch { /* Storage can be blocked. */ }
+  setCollapsed(savedCollapsed);
+  toggle.addEventListener('click', () => {
+    const collapsed = !body.hidden;
+    setCollapsed(collapsed);
+    try { localStorage.setItem(collapsedKey, String(collapsed)); } catch { /* Keep the in-page preference. */ }
+  });
 
   function node(tag, text, className) {
     const element = document.createElement(tag);

@@ -23,8 +23,19 @@ public class MarketBriefingSources {
         String[][] quotes={{"KOSPI","코스피","^KS11","pt"},{"KOSDAQ","코스닥","^KQ11","pt"},
                 {"SP500","S&P 500","^GSPC","pt"},{"NASDAQ","나스닥","^IXIC","pt"},{"USDKRW","원/달러","KRW=X","KRW"}};
         for(var quote:quotes){try{
-            String body=http.get(URI.create("https://query1.finance.yahoo.com/v8/finance/chart/"+PublicMarketHttp.encode(quote[2])+"?range=10d&interval=1d"));
-            var source=parseQuote(body,quote[0],quote[1],quote[2],quote[3],cutoff);sources.add(source);
+            Source source;
+            if(Set.of("KOSPI","KOSDAQ","USDKRW").contains(quote[0])){
+                try{
+                    String url=quote[0].equals("USDKRW")
+                            ?"https://api.stock.naver.com/marketindex/exchange/FX_USDKRW/prices?page=1&pageSize=10"
+                            :"https://api.stock.naver.com/chart/domestic/index/"+quote[0]+"?periodType=dayCandle";
+                    source=parseNaverQuote(http.get(URI.create(url)),quote[0],quote[1],quote[3],cutoff);
+                }catch(RuntimeException e){
+                    source=yahooQuote(quote,cutoff);
+                    warnings.add(quote[1]+" 네이버 일별 자료를 확인하지 못해 Yahoo Finance 일봉을 사용했습니다. 출처와 시세 기준일을 확인해 주세요.");
+                }
+            }else source=yahooQuote(quote,cutoff);
+            sources.add(source);
             if(source.observedAt().isBefore(cutoff.minus(Duration.ofDays(5))))warnings.add(quote[1]+" 자료가 5일 이상 지났습니다. 기준일을 확인해 주세요.");
         }catch(RuntimeException e){warnings.add(quote[1]+" 시세를 수집하지 못했습니다.");}}
         String[][] feeds={{"yna","연합뉴스","https://www.yna.co.kr/rss/economy.xml"},
@@ -36,6 +47,39 @@ public class MarketBriefingSources {
             for(var article:articles)if(links.add(article.url()))sources.add(article);
         }catch(RuntimeException e){warnings.add(feed[1]+" 뉴스를 수집하지 못했습니다.");}}
         return new Input(Instant.now(),List.copyOf(sources),List.copyOf(warnings));
+    }
+    private Source yahooQuote(String[] quote,Instant cutoff){
+        String body=http.get(URI.create("https://query1.finance.yahoo.com/v8/finance/chart/"+PublicMarketHttp.encode(quote[2])+"?range=10d&interval=1d"));
+        return parseQuote(body,quote[0],quote[1],quote[2],quote[3],cutoff);
+    }
+    Source parseNaverQuote(String body,String id,String label,String unit,Instant cutoff){
+        try{
+            boolean exchange=id.equals("USDKRW");
+            var root=mapper.readTree(body);var rows=exchange?root:root.path("priceInfos");
+            if(!rows.isArray())throw new IllegalArgumentException("일별 시세 응답 형식 오류");
+            var prices=new TreeMap<LocalDate,BigDecimal>();
+            for(var row:rows){
+                LocalDate date=LocalDate.parse(row.path(exchange?"localTradedAt":"localDate").asText(),
+                        exchange?DateTimeFormatter.ISO_LOCAL_DATE:DateTimeFormatter.BASIC_ISO_DATE);
+                // The FX feed has dates, not closing timestamps. End of the KST date is a completion boundary.
+                Instant end=date.atTime(exchange?LocalTime.of(23,59,59):LocalTime.of(15,30)).atZone(MarketBriefingService.KST).toInstant();
+                if(end.isAfter(cutoff))continue;
+                String text=row.path("closePrice").asText();
+                if(!text.matches("(?:[0-9]+|[0-9]{1,3}(?:,[0-9]{3})+)(?:\\.[0-9]+)?"))continue;
+                BigDecimal price=new BigDecimal(text.replace(",",""));
+                if(price.signum()>0)prices.put(date,price);
+            }
+            if(prices.size()<2)throw new IllegalArgumentException("확정 시세 부족");
+            var last=prices.lastEntry();var previous=prices.lowerEntry(last.getKey());
+            BigDecimal change=last.getValue().divide(previous.getValue(),10,RoundingMode.HALF_UP).subtract(BigDecimal.ONE);
+            String title=label+(exchange?" 일별 환율 ":" 종가 ")+last.getValue().stripTrailingZeros().toPlainString()
+                    +", "+previous.getKey().format(DateTimeFormatter.ofPattern("uuuu년 M월 d일"))+" 자료 대비 "
+                    +change.multiply(BigDecimal.valueOf(100)).stripTrailingZeros().toPlainString()+"%";
+            String url=exchange?"https://m.stock.naver.com/marketindex/exchange/FX_USDKRW"
+                    :"https://m.stock.naver.com/domestic/index/"+id+"/total";
+            Instant observed=last.getKey().atTime(exchange?LocalTime.of(23,59,59):LocalTime.of(15,30)).atZone(MarketBriefingService.KST).toInstant();
+            return new Source(id,"QUOTE",label,title,url,observed,last.getValue(),change,unit);
+        }catch(java.io.IOException|DateTimeException e){throw new IllegalArgumentException("일별 시세 응답 형식 오류");}
     }
     Source parseQuote(String body,String id,String label,String symbol,String unit,Instant cutoff){
         try {

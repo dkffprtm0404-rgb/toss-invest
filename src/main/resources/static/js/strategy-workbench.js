@@ -157,7 +157,171 @@
       return key === this.key && this.phase === 'loaded' && this.confirmed && ['READY', 'PARTIAL'].includes(this.data?.status);
     }
   }
-  if (typeof module !== 'undefined' && module.exports) module.exports = { percentToRate, rateToPercent, splitSavedPrompt, DraftState, DraftCollection, executionCoverage, supportsReadiness, DataReadinessState };
+  const validationFieldLabels = {
+    strategy:'전략', schemaVersion:'전략 형식 버전', name:'전략 이름', originalPrompt:'전략 원문', entry:'진입 조건', exit:'청산 조건', conditions:'조건', condition:'조건',
+    operator:'조건 결합', type:'조건 종류', averageType:'이동평균 종류', shortPeriod:'단기 기간', longPeriod:'장기 기간',
+    period:'기간', smaPeriod:'SMA 필터 기간', direction:'방향', method:'계산 방식', threshold:'기준값', comparison:'비교 방식',
+    multiplier:'배수·비율', periodUnit:'기간 단위', priceField:'구간 가격 기준', lookbackMonths:'비교 기간 (개월)',
+    fastPeriod:'MACD 단기 EMA 기간', slowPeriod:'MACD 장기 EMA 기간', signalPeriod:'MACD 시그널 EMA 기간',
+    value:'MACD 값', reference:'MACD 비교 대상', band:'볼린저 밴드', risk:'위험 관리', stopLoss:'손절', takeProfit:'익절',
+    trailingStop:'비율 추적손절', trailing:'단계식 트레일링', atrStop:'ATR 손절', rate:'수익률', peakBasis:'추적 고점 기준',
+    timeExit:'시간 청산', days:'보유 봉 수', portfolio:'포트폴리오', market:'대상 시장', topN:'상위 종목 수',
+    selectionOrder:'순위·필터 순서', rebalanceTiming:'주간 계산일', weighting:'종목 비중', composition:'조합 전략',
+    selection:'종목 선정', allocation:'자금 배분', maxPositions:'최대 보유 종목 수', rebalance:'비중 조정',
+    children:'하위 조건', sources:'원문 출처', sourceId:'원문 출처 ID', selectionSourceId:'선정 원문',
+    riskConfirmed:'공통 위험 관리 확인', exitConfirmed:'공통 청산 확인', rankExit:'순위 이탈 청산', resolution:'변경·제외 사유',
+    id:'조건·출처 ID', title:'제목', prompt:'원문', included:'포함 여부', definition:'원문 전략', questions:'보완 질문', unsupported:'미지원 내역',
+    version:'저장 버전', symbol:'종목 코드', dates:'실행 기간', startDate:'시작일', endDate:'종료일', executionMode:'체결 방식',
+    initialCapital:'초기자금', commissionRate:'수수료율', taxRate:'매도세율', slippageRate:'슬리피지율',
+    universe:'시장·거래일 자료', source:'자료 출처·범위', tradingDates:'거래일', members:'편입 이력', from:'편입 시작일', to:'편입 종료일', request:'요청'
+  };
+  function valueAtPath(value, path) {
+    return path.replace(/^strategy\./, '').replace(/\[(\d+)\]/g, '.$1').split('.').reduce((item, key) => item?.[key], value);
+  }
+  function validationIssueText(issue, definition) {
+    const path = issue.path || 'strategy', key = path.split('.').pop();
+    const label = path.split('.').map(part => {
+      const match = part.match(/^([^[]+)\[(\d+)\]$/);
+      return match ? `${validationFieldLabels[match[1]] || match[1]} ${Number(match[2]) + 1}` : validationFieldLabels[part] || part;
+    }).join(' · ');
+    const condition = valueAtPath(definition, path.slice(0, path.lastIndexOf('.')));
+    const hints = {
+      schemaVersion:'단일 종목은 형식 1·2, 포트폴리오는 3, 조합은 4를 사용하고 해당 조건 구조를 확인하세요.',
+      operator:'모두 충족(AND) 또는 하나 이상 충족(OR)을 선택하세요.',
+      averageType:'단순 이동평균(SMA) 또는 지수 이동평균(EMA)을 선택하세요.',
+      direction:'상향·상승(UP) 또는 하향·하락(DOWN)을 선택하세요.',
+      periodUnit:'거래봉(BARS) 또는 달력상 주(CALENDAR_WEEKS)를 선택하세요.',
+      priceField:'최고 고가(HIGH) 또는 최저 저가(LOW)를 선택하세요.',
+      peakBasis:'진입 후 최고 종가(CLOSE) 또는 일중 최고가(HIGH)를 선택하세요.',
+      market:'전략 대상 시장은 KOSPI·KOSDAQ·KOSPI_KOSDAQ 중 선택하세요. 개별 편입 이력에는 KOSPI 또는 KOSDAQ만 사용합니다.',
+      selectionOrder:'필터 후 순위(FILTER_THEN_RANK) 또는 순위 후 필터(RANK_THEN_FILTER)를 선택하세요.',
+      rebalanceTiming:'주 첫 거래일(WEEK_START) 또는 주 마지막 거래일(WEEK_END)을 선택하세요.',
+      weighting:'동일 비중(EQUAL_SLOTS)을 선택하세요. 후보가 부족한 몫은 현금으로 유지합니다.',
+      entry:'진입 조건 그룹을 추가하고 조건 종류·필수값을 입력하세요.',
+      lookbackMonths:'1~60 사이의 정수 개월 수를 입력하세요.', topN:'1~100 사이의 정수 종목 수를 입력하세요.',
+      days:'0~10000 사이의 정수 봉 수를 입력하세요. 이 수를 초과한 뒤 청산합니다.',
+      conditions:'조건을 1~20개 입력하세요. 2개 이상이면 결합 방식도 선택하세요.',
+      method:condition?.type === 'RSI' ? 'RSI는 단순 평균(SIMPLE)을 선택하세요.' : 'ATR은 단순 평균(SIMPLE) 또는 Wilder 평활 평균(WILDER)을 선택하세요.',
+      comparison:condition?.type === 'VOLUME' ? '거래량은 이상(GTE) 또는 이하(LTE)를 선택하세요.'
+        : condition?.type === 'RSI' ? 'RSI는 이상·이하·상향 교차·하향 교차 중 선택하세요.' : '이상·이하·초과·미만·상향 교차·하향 교차 중 선택하세요.',
+      value:condition?.reference === 'SIGNAL' ? '시그널선 비교에는 MACD선(LINE)만 선택하세요.'
+        : 'MACD선(LINE)·시그널선(SIGNAL)·히스토그램(HISTOGRAM) 중 선택하세요.',
+      reference:'숫자 기준(THRESHOLD) 또는 시그널선(SIGNAL)을 선택하세요.',
+      band:'상단(UPPER)·중단(MIDDLE)·하단(LOWER) 중 선택하세요.',
+      type:'화면의 조건 종류 목록에서 지원하는 조건을 선택하세요.'
+    };
+    let hint = hints[key];
+    if (['period', 'smaPeriod', 'shortPeriod', 'longPeriod', 'fastPeriod', 'slowPeriod', 'signalPeriod'].includes(key)) {
+      hint = '1~500 사이의 정수 기간을 입력하세요.';
+      if (key === 'longPeriod' || key === 'slowPeriod') hint += ' 장기 기간은 단기 기간보다 커야 합니다.';
+    }
+    if (key === 'rate') hint = /stopLoss|trailingStop/.test(path)
+      ? '화면에는 -100% 초과, 0% 미만으로 입력하세요. 예: -5%는 -5 (JSON 비율 -0.05).'
+      : '0보다 큰 수익률을 입력하세요. 예: 화면 10%는 10 (JSON 비율 0.10).';
+    if (key === 'multiplier') hint = condition?.type === 'RANGE_RATIO'
+      ? '0보다 큰 비율을 입력하세요. 예: 화면 75%는 75 (JSON 배수 0.75).'
+      : '0보다 큰 배수를 입력하세요. 예: 1.5배는 1.5.';
+    if (key === 'threshold') hint = condition?.type === 'RSI' ? 'RSI 기준을 0~100 사이로 입력하세요.'
+      : '숫자 기준 비교이면 기준값을 입력하고, 시그널선 비교이면 숫자 기준을 비우세요.';
+    const messages = {
+      'Use a decimal rate strictly between -1 and 0 (5% loss = -0.05).':'화면 손절률을 -100% 초과, 0% 미만으로 수정하세요. 예: -5%는 -5 (JSON -0.05).',
+      'Use 0 to 10000 bars; exit triggers only after this count is exceeded.':hints.days,
+      'Supply 1 to 20 conditions.':hints.conditions,
+      'longPeriod must be greater than shortPeriod.':'장기 기간을 단기 기간보다 큰 정수로 수정하세요. 두 기간 모두 1~500봉입니다.',
+      'RSI threshold must be between 0 and 100.':'RSI 기준을 0~100 사이로 수정하세요.',
+      'Volume supports GTE or LTE.': '거래량 비교 방식을 이상(GTE) 또는 이하(LTE)로 수정하세요.',
+      'Period must be between 1 and 500 bars.':'기간을 1~500 사이의 정수로 수정하세요.',
+      'Supply a positive decimal value.':hint
+    };
+    let advice = issue.code === 'REQUIRED' ? hint || '해당 항목을 채우고 입력 조건 검증을 다시 실행하세요.'
+      : messages[issue.message] || (/[가-힣]/.test(issue.message || '') ? issue.message : hint || '해당 위치의 JSON 필드·값·자료형을 확인하고 다시 검증하세요.');
+    if (key === 'rate' && hint) advice = hint;
+    if (['commissionRate', 'taxRate', 'slippageRate'].includes(key)) advice = '화면에는 0~25%로 입력하세요. 예: 0.1%는 0.1 (JSON 비율 0.001). 미적용은 0을 명시하세요.';
+    return `${label} (${path}) · ${issue.code === 'REQUIRED' ? '필수 항목 누락' : '입력값 확인 필요'}: ${advice}`;
+  }
+  function inputDate(value) {
+    if (typeof value !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(value)) return null;
+    const date = new Date(value + 'T00:00:00Z');
+    return Number.isFinite(date.getTime()) && date.toISOString().slice(0, 10) === value ? date : null;
+  }
+  // Mirrors PortfolioRequest / CompositeRequest input checks only; no market or candle readiness inference.
+  function portfolioInputPreview(input, {needsUniverse = true, symbolRequired = false} = {}) {
+    const issues = [], add = (path, message, field = 'universe') => issues.push({path, message, field});
+    const first = inputDate(input.startDate), last = inputDate(input.endDate);
+    if (!first || first.getUTCFullYear() < 1901 || first.getUTCFullYear() > 9997) add('startDate', '시작일을 1901~9997년의 실제 날짜(YYYY-MM-DD)로 입력하세요.', 'startDate');
+    if (!last || last.getUTCFullYear() < 1901 || last.getUTCFullYear() > 9997) add('endDate', '종료일을 1901~9997년의 실제 날짜(YYYY-MM-DD)로 입력하세요.', 'endDate');
+    if (first && last) {
+      const year = first.getUTCFullYear() + 10, month = first.getUTCMonth();
+      const limit = new Date(Date.UTC(year, month, Math.min(first.getUTCDate(), new Date(Date.UTC(year, month + 1, 0)).getUTCDate())));
+      if (last < first) add('endDate', '종료일이 시작일보다 빠릅니다. 실행 기간을 수정하세요.', 'endDate');
+      else if (last > limit) add('endDate', '실행 기간은 시작일부터 최대 10년입니다. 종료일을 앞당겨 주세요.', 'endDate');
+    }
+    if (!['SAME_DAY_CLOSE', 'NEXT_DAY_OPEN'].includes(input.executionMode)) add('executionMode', '체결 방식을 선택하세요.', 'executionMode');
+    const symbol = (input.symbol || '').trim();
+    if ((symbolRequired || symbol) && !/^[A-Za-z0-9]{1,32}$/.test(symbol)) add('symbol', '종목 코드는 영문·숫자 1~32자로 입력하세요.', 'symbol');
+    if (String(input.initialCapital || '').trim() === '' || !Number.isFinite(Number(input.initialCapital)) || Number(input.initialCapital) <= 0 || Number(input.initialCapital) > 1000000000000)
+      add('initialCapital', '초기자금을 0 초과, 1조 원 이하로 입력하세요.', 'initialCapital');
+    for (const key of ['commissionRate', 'taxRate', 'slippageRate']) {
+      if (String(input[key] ?? '').trim() === '' || !Number.isFinite(Number(input[key])) || Number(input[key]) < 0 || Number(input[key]) > 25)
+        add(key, `${validationFieldLabels[key]}을 화면 기준 0~25%로 입력하세요. 비용 미적용은 0을 명시하세요.`, key);
+    }
+    if (!needsUniverse) return {issues, summary:null};
+    let data;
+    try { data = JSON.parse(input.universe); }
+    catch (error) {
+      const position = (error.message || '').match(/position (\d+)/), line = (error.message || '').match(/line (\d+) column (\d+)/);
+      const before = position ? input.universe.slice(0, Number(position[1])).split('\n') : null;
+      const location = line ? ` ${line[1]}행 ${line[2]}열` : before ? ` ${before.length}행 ${before[before.length - 1].length + 1}열` : '';
+      add('universe', `JSON 문법 오류${location}: 큰따옴표·쉼표·괄호를 확인하세요.`); return {issues, summary:null};
+    }
+    if (!data || typeof data !== 'object' || Array.isArray(data)) { add('universe', 'source·tradingDates·members가 있는 JSON 객체를 입력하세요.'); return {issues, summary:null}; }
+    if (typeof data.source !== 'string' || !data.source.trim() || data.source.length > 1000) add('universe.source', '자료 출처·구성 범위·기준일을 1~1000자로 입력하세요.');
+    const dates = data.tradingDates, members = data.members;
+    if (!Array.isArray(dates) || !dates.length || dates.length > 10000) add('universe.tradingDates', '거래일 배열을 1~10000개 입력하세요.');
+    else {
+      let ordered = true;
+      dates.forEach((day, index) => {
+        const date = inputDate(day);
+        if (!date || date.getUTCFullYear() < 1900 || date.getUTCFullYear() > 9998) { ordered = false; add(`universe.tradingDates[${index}]`, '1900~9998년의 실제 날짜(YYYY-MM-DD)로 수정하세요.'); }
+        else if (index && day <= dates[index - 1]) { ordered = false; add(`universe.tradingDates[${index}]`, `직전 항목 [${index - 1}]보다 뒤의 거래일이어야 합니다. 중복을 제거하고 오름차순으로 정렬하세요.`); }
+      });
+      if (ordered && first && last) {
+        if (inputDate(dates[0]) >= first) add('universe.tradingDates[0]', '첫 거래일은 실행 시작일보다 앞서야 합니다. 실제 준비 이력을 포함하세요.');
+        if (inputDate(dates[dates.length - 1]).getTime() <= last.getTime() + 7 * 86400000)
+          add(`universe.tradingDates[${dates.length - 1}]`, '마지막 거래일은 종료일+7일보다 뒤여야 합니다. 확인한 실제 거래 캘린더를 포함하세요.');
+      }
+    }
+    const grouped = new Map();
+    if (!Array.isArray(members) || !members.length || members.length > 10000) add('universe.members', '편입 이력 배열을 1~10000개, 고유 종목은 최대 3000개 입력하세요.');
+    else {
+      members.forEach((member, index) => {
+        const path = `universe.members[${index}]`;
+        if (!member || typeof member !== 'object' || Array.isArray(member)) { add(path, 'symbol·market·from·to가 있는 편입 이력 객체를 입력하세요.'); return; }
+        const validSymbol = typeof member.symbol === 'string' && /^[A-Za-z0-9]{1,32}$/.test(member.symbol);
+        if (!validSymbol) add(path + '.symbol', '종목 코드를 영문·숫자 1~32자로 입력하세요. 앞자리 0을 보존하는 문자열을 사용하세요.');
+        if (!['KOSPI', 'KOSDAQ'].includes(member.market)) add(path + '.market', '개별 종목의 시장은 KOSPI 또는 KOSDAQ입니다. 통합 시장 코드는 사용할 수 없습니다.');
+        const from = inputDate(member.from), to = member.to == null ? null : inputDate(member.to);
+        if (!from) add(path + '.from', '편입 시작일을 실제 날짜(YYYY-MM-DD)로 입력하세요.');
+        if (member.to != null && !to) add(path + '.to', '편입 종료일을 실제 날짜로 입력하세요. 종료 미정은 빈 문자열 대신 null을 사용하세요.');
+        if (from && to && to < from) add(path + '.to', '편입 종료일을 편입 시작일과 같거나 뒤의 날짜로 수정하세요.');
+        if (validSymbol && from && (member.to == null || to && to >= from)) {
+          if (!grouped.has(member.symbol)) grouped.set(member.symbol, []);
+          grouped.get(member.symbol).push({...member, index});
+        }
+      });
+      if (new Set(members.filter(Boolean).map(member => member.symbol)).size > 3000) add('universe.members', '고유 종목이 3000개를 초과합니다. 종목 범위를 줄여 주세요.');
+      grouped.forEach(group => {
+        group.sort((a, b) => a.from.localeCompare(b.from));
+        group.forEach((member, index) => {
+          if (index && (group[index - 1].to == null || member.from <= group[index - 1].to))
+            add(`universe.members[${member.index}].from`, `동일 종목 ${member.symbol}의 편입 기간이 [${group[index - 1].index}]와 겹칩니다. 양 끝 날짜를 포함하므로 이전 종료일보다 뒤에 시작해야 합니다.`);
+        });
+      });
+      if (symbol && !members.some(member => member?.symbol === symbol)) add('symbol', '지정 종목을 비교 시장의 편입 이력에도 포함하세요.', 'symbol');
+    }
+    return {issues, summary:{source:data.source, dates:Array.isArray(dates) ? dates.length : 0, symbols:grouped.size}};
+  }
+  if (typeof module !== 'undefined' && module.exports) module.exports = { percentToRate, rateToPercent, splitSavedPrompt, DraftState, DraftCollection, executionCoverage, supportsReadiness, DataReadinessState, validationIssueText, portfolioInputPreview };
   if (typeof document === 'undefined') return;
   const root = document.getElementById('strategyWorkbench');
   if (!root) return;
@@ -241,8 +405,10 @@
     let result;
     try { result = await response.json(); } catch { throw new Error('서버 응답을 읽지 못했습니다. 연결 상태를 확인해 주세요.'); }
     if (!response.ok) {
-      const details = (result.issues || []).map(x => `${x.path}: ${x.message}`).join(' / ');
-      throw new Error([result.code, result.message || '요청에 실패했습니다.', details].filter(Boolean).join(' · '));
+      const details = (result.issues || []).map(x => validationIssueText(x, data?.schemaVersion ? data : state.draft)).join(' / ');
+      const summary = ({VALIDATION_ERROR:'입력값을 수정한 뒤 다시 시도해 주세요.', INVALID_REQUEST:'요청 필드·값·자료형을 확인해 주세요.'})[result.code]
+        || (/[가-힣]/.test(result.message || '') ? result.message : '요청을 처리하지 못했습니다. 입력과 연결 상태를 확인해 주세요.');
+      throw new Error([result.code, summary, details].filter(Boolean).join(' · '));
     }
     return result;
   }
@@ -329,6 +495,13 @@
     confirm.disabled = !state.canConfirm() || state.busy;
     saveNew.disabled = !state.canSave(); saveVersion.disabled = !state.canSave() || !selected;
     runButton.disabled = !selected || state.busy || (supportsReadiness(selected) && !readiness.canRun(readinessKey()));
+    if (paperButton) {
+      paperButton.disabled = state.busy || !supportsReadiness(selected);
+      paperSupport.textContent = !selected ? '모의매매: 저장 전략과 버전을 먼저 선택하세요.'
+        : supportsReadiness(selected) ? '모의매매 지원 · 단일 종목 형식 1·2. 버튼을 눌러 실행 종목·자금·비용을 입력하세요.'
+          : '모의매매 미지원 · 포트폴리오·조합·형식 3 이상은 시작할 수 없습니다. 단일 종목 형식 1·2를 선택하세요.';
+      paperButton.title = paperSupport.textContent;
+    }
     syncReadinessControls();
     const compositeMode = !!selected?.strategy?.composition;
     const portfolioMode = !!selected?.strategy?.portfolio || compositeMode;
@@ -337,6 +510,7 @@
     const needsUniverse = !!selected?.strategy?.portfolio || !!selected?.strategy?.composition?.selection;
     universe.closest('label').hidden = !needsUniverse; universeFile.closest('label').hidden = !needsUniverse;
     resultCaution.hidden = portfolioMode;
+    renderPortfolioPreview();
     renderDrafts();
   }
   function rememberDraft() {
@@ -360,6 +534,7 @@
   }
   function clearSelection() {
     selected = null; displayedRunId = null; selection.textContent = '선택한 전략 없음';
+    window.StrategyPaper?.clearSelection?.();
     invalidateReadiness();
     runTarget.textContent = '저장된 전략과 버전을 먼저 선택하세요.';
     versions.replaceChildren(); versionMore.hidden = true;
@@ -376,7 +551,7 @@
   function renderIssues() {
     issues.replaceChildren();
     const messages = [
-      ...state.issues.map(x => `${x.path} · ${x.message}`),
+      ...state.issues.map(x => validationIssueText(x, state.draft)),
       ...state.questions.map(x => `보완 질문: ${x}`),
       ...state.unsupported.map(x => `미지원: ${x}`)
     ];
@@ -633,6 +808,13 @@
   function renderPortfolioEditor(draft) {
     const p = draft.portfolio;
     editor.append(node('p', '상대강도 포트폴리오 · 종가 수익률과 종가 > SMA로 선정합니다. 빈 항목은 직접 선택하거나 보완 재해석하세요.', 'sw-muted'));
+    const example = node('details', null, 'sw-portfolio-help');
+    example.append(node('summary', '포트폴리오 조건 정상 입력 예시'),
+      node('p', '입력 구조를 설명하는 정책 예시입니다. 자동 적용하지 않습니다. 본인의 의도에 맞게 아래 항목을 편집하고 서버 검증 후 저장하세요.', 'sw-muted'),
+      node('pre', JSON.stringify({schemaVersion:3, entry:null, exit:null, portfolio:{market:'KOSPI_KOSDAQ', lookbackMonths:6, topN:10, smaPeriod:200,
+        selectionOrder:'FILTER_THEN_RANK', rebalanceTiming:'WEEK_END', weighting:'EQUAL_SLOTS'}, risk:{stopLoss:{rate:-0.08}}}, null, 2), 'sw-prose'),
+      node('p', '수익률 기간 1~60개월 · 상위 종목 1~100개 · SMA 1~500봉. 화면 손절 -8%는 -8로 입력하며 JSON에는 -0.08로 저장합니다. 개별 진입·청산 그룹과 혼용하지 않습니다.', 'sw-muted'));
+    editor.append(example);
     editField(editor, '대상 시장', p, 'market', [['KOSPI','KOSPI'],['KOSDAQ','KOSDAQ'],['KOSPI_KOSDAQ','KOSPI + KOSDAQ']]);
     editField(editor, '수익률 기간 (개월)', p, 'lookbackMonths'); editField(editor, '상위 종목 수', p, 'topN'); editField(editor, 'SMA 필터 기간 (거래일)', p, 'smaPeriod');
     editField(editor, '순위와 필터 적용 순서', p, 'selectionOrder', [['FILTER_THEN_RANK','SMA 필터 통과 종목에서 상위 선정'],['RANK_THEN_FILTER','전체 상위 선정 후 SMA 필터 적용']]);
@@ -667,10 +849,15 @@
     window.StrategyComparison.add(selected);
     document.getElementById('strategyComparison')?.scrollIntoView({behavior:'smooth',block:'start'});
   }));
-  if (window.StrategyPaper) selection.after(button('이 버전으로 모의매매', () => {
+  const paperSupport = node('p', '', 'sw-muted'); paperSupport.id = 'sw-paper-support'; paperSupport.setAttribute('role', 'status');
+  const paperButton = window.StrategyPaper ? button('이 버전으로 모의매매', () => {
     if (!selected) { notify('저장된 전략과 버전을 먼저 선택하세요.', true); return; }
     window.StrategyPaper.select(selected);
-  }));
+  }) : null;
+  if (paperButton) { paperButton.setAttribute('aria-describedby', paperSupport.id); selection.after(paperButton, paperSupport); }
+  function paperSupportLabel(saved) {
+    return supportsReadiness(saved) ? '모의매매 지원 · 단일 종목 형식 1·2' : '모의매매 미지원 · 단일 종목 형식 1·2만 시작 가능';
+  }
   async function loadStrategies(more) {
     const page = more ? strategyPage + 1 : 0;
     const entries = await api(`/api/strategies?page=${page}&size=20`);
@@ -680,13 +867,15 @@
     entries.forEach(saved => {
       const row = node('div', null, 'sw-list-row');
       row.append(node('span',saved.strategy.composition?'조합 전략':saved.strategy.portfolio?'포트폴리오':'단일 종목','sw-strategy-type'));
+      row.append(node('span', paperSupportLabel(saved), 'sw-paper-support'));
       row.append(button(`${saved.strategy.name || '이름 없음'} · #${saved.id} · 최신 v${saved.version}`,
-        () => operation('전략과 이력 불러오는 중…', async () => { await selectSaved(await api(`/api/strategies/${saved.id}`)); notify('저장된 전략을 불러왔습니다. 수정한 내용은 검증 후 새 버전으로 저장하세요.'); })),
+        () => operation('전략과 이력 불러오는 중…', async () => { window.StrategyPaper?.clearSelection?.(); await selectSaved(await api(`/api/strategies/${saved.id}`)); notify('저장된 전략을 불러왔습니다. 수정한 내용은 검증 후 새 버전으로 저장하세요.'); })),
         button(`전략 #${saved.id} 삭제`, () => {
           if (state.busy || !window.confirm(`“${saved.strategy.name || '이름 없음'}” 전략 #${saved.id}의 모든 버전과 백테스트 실행 이력, 이 전략이 포함된 비교 이력 전체를 삭제합니다. 종료된 모의매매 이력은 보존하며, 미종료 모의매매가 있으면 삭제할 수 없습니다. 복구할 수 없습니다. 삭제하시겠습니까?`)) return;
           operation('전략 삭제 중…', async () => {
             await api(`/api/strategies/${saved.id}`, 'DELETE');
             if (selected?.id === saved.id) {
+              window.StrategyPaper?.clearSelection?.();
               selected = null; displayedRunId = null;
               rememberDraft(); drafts.index = -1; state = new DraftState();
               sourcePrompt.value = ''; clarification.value = '';
@@ -716,6 +905,7 @@
     await loadVersions(false); await loadRuns(false);
   }
   function showSelection(saved) {
+    window.StrategyPaper?.clearSelection?.();
     invalidateReadiness();
     selection.textContent = `선택: ${saved.strategy.name || '이름 없음'} · 전략 #${saved.id} / 버전 ${saved.version}`;
     runTarget.textContent = `실행 대상: 전략 #${saved.id}, 저장된 버전 ${saved.version} (편집 중인 초안은 실행되지 않습니다.)`;
@@ -725,9 +915,14 @@
     const page = more ? versionPage + 1 : 0;
     const entries = await api(`/api/strategies/${selected.id}/versions?page=${page}&size=20`);
     if (!more) versions.replaceChildren();
-    entries.forEach(saved => versions.append(button(`v${saved.version} · ${dateTime(saved.versionCreatedAt)}`, () => operation('버전 불러오는 중…', async () => {
-      await selectSaved(await api(`/api/strategies/${saved.id}/versions/${saved.version}`)); notify(`버전 ${saved.version}을 선택했습니다. 과거 버전으로 덮어쓰기는 최신 버전 충돌 검사로 보호됩니다.`);
-    }))));
+    entries.forEach(saved => {
+      const row = node('div', null, 'sw-list-row');
+      row.append(button(`v${saved.version} · ${dateTime(saved.versionCreatedAt)}`, () => operation('버전 불러오는 중…', async () => {
+        window.StrategyPaper?.clearSelection?.();
+        await selectSaved(await api(`/api/strategies/${saved.id}/versions/${saved.version}`)); notify(`버전 ${saved.version}을 선택했습니다. 과거 버전으로 덮어쓰기는 최신 버전 충돌 검사로 보호됩니다.`);
+      })), node('span', paperSupportLabel(saved), 'sw-paper-support'));
+      versions.append(row);
+    });
     versionPage = page; versionMore.hidden = entries.length < 20;
   }
   const run = block('4. 백테스트 실행');
@@ -738,15 +933,77 @@
   const end = field(runFields, '종료일', '', invalidateReadiness, { type: 'date' });
   const mode = field(runFields, '체결 방식', '', invalidateReadiness, { choices: [['SAME_DAY_CLOSE', '신호 당일 종가'], ['NEXT_DAY_OPEN', '신호 다음 거래일 시가']] });
   const portfolioFields=node('div',null,'sw-condition');portfolioFields.hidden=true;
-  const capital=field(portfolioFields,'초기자금 (원)','',()=>{},{type:'number'});
-  const commission=field(portfolioFields,'수수료율 (%)','',()=>{},{type:'number'});
-  const tax=field(portfolioFields,'매도세율 (%)','',()=>{},{type:'number'});
-  const slippage=field(portfolioFields,'슬리피지율 (%)','',()=>{},{type:'number'});
+  const capital=field(portfolioFields,'초기자금 (원)','',renderPortfolioPreview,{type:'number'});
+  const commission=field(portfolioFields,'수수료율 (%)','',renderPortfolioPreview,{type:'number'});
+  const tax=field(portfolioFields,'매도세율 (%)','',renderPortfolioPreview,{type:'number'});
+  const slippage=field(portfolioFields,'슬리피지율 (%)','',renderPortfolioPreview,{type:'number'});
   portfolioFields.append(node('p','비용을 반영하지 않으려면 0을 입력하세요. 실제 요율은 직접 지정합니다. 시장 자료는 출처·거래일 캘린더·종목별 시장과 편입 기간이 필요합니다. 로컬에 저장된 종목을 시장 전체로 간주하지 않습니다.','sw-muted'));
-  const universe=field(portfolioFields,'시장·거래일 자료 (JSON)','',()=>{},{textarea:true,maxLength:1900000,placeholder:'{"source":"자료 출처와 범위","tradingDates":["2025-01-02"],"members":[{"symbol":"005930","market":"KOSPI","from":"2025-01-02","to":null}]}'});
+  const universe=field(portfolioFields,'시장·거래일 자료 (JSON)','',renderPortfolioPreview,{textarea:true,maxLength:1900000,placeholder:'{"source":"자료 출처와 범위","tradingDates":["2025-01-02"],"members":[{"symbol":"005930","market":"KOSPI","from":"2025-01-02","to":null}]}'});
+  universe.closest('label').classList.add('sw-universe-field');
   const universeFile=field(portfolioFields,'시장 자료 JSON 파일','',()=>{},{type:'file'});universeFile.accept='.json,application/json';
-  universeFile.addEventListener('change',()=>operation('시장 자료 읽는 중…',async()=>{const file=universeFile.files[0];if(!file)return;if(file.size>1900000)throw new Error('시장 자료 파일은 1.9MB 이하여야 합니다.');const text=await file.text();JSON.parse(text);universe.value=text;notify('시장 자료를 읽었습니다. 출처와 적용 기간을 확인하세요.');}));
+  universeFile.addEventListener('change',()=>operation('시장 자료 읽는 중…',async()=>{
+    const file=universeFile.files[0], owner=selected;if(!file)return;
+    if(file.size>1900000)throw new Error('시장 자료 파일은 1.9MB 이하여야 합니다.');
+    const text=await file.text();if(owner!==selected || universeFile.files[0]!==file)return;
+    universe.value=text;renderPortfolioPreview();notify('시장 자료를 읽었습니다. 검증 미리보기의 오류 위치와 출처·적용 기간을 확인하세요.');
+  }));
   portfolioFields.append(node('p','tradingDates는 준비 이력부터 종료일 7일 이후까지의 거래일을 오름차순으로 포함해야 합니다. members의 from/to는 해당 시장 편입 시작/종료일이며 to=null은 종료 미정입니다.','sw-muted'));
+  const universeHelp = node('details', null, 'sw-portfolio-help');
+  universeHelp.append(node('summary', '시장자료 정상 입력 템플릿·오류 예시'),
+    node('p', '아래는 형식 설명용 합성 자료입니다. 실제 시장 구성·거래일이나 저장 일봉의 준비 현황이 아닙니다. 실제 출처·기준일·편입 이력과 거래 캘린더로 교체하세요.', 'sw-caution'),
+    node('p', '형식 예시의 실행 기간: 2025-01-02~2025-01-03. 초기자금 1,000,000원, 비용률 각 0%, 체결 방식은 직접 선택합니다. 표시한 정책과 비용은 자동 적용하지 않습니다.', 'sw-muted'),
+    node('pre', JSON.stringify({source:'합성 예시 / 형식 설명용 / 실제 시장 자료 아님', tradingDates:['2024-12-30','2025-01-02','2025-01-03','2025-01-13'],
+      members:[{symbol:'005930',market:'KOSPI',from:'2024-12-30',to:null}]}, null, 2), 'sw-prose'),
+    node('p', '자료 출처에는 원본 파일·조회 범위·기준일과 시점별 이력인지 고정 목록인지 기록하세요. 예시 날짜 사이의 공백은 실제 거래일 여부를 뜻하지 않습니다. 지표 계산에 필요한 이력도 별도로 확보해야 합니다.', 'sw-muted'));
+  const invalidExamples = node('ul');
+  ['source 누락 → universe.source에 출처·범위·기준일을 입력하세요.',
+    'members[0].symbol: 5930 (숫자) → "005930"처럼 앞자리 0을 보존하는 문자열을 입력하세요.',
+    'tradingDates[1]: "2025-02-30" → 실제 날짜로 수정하세요. 중복·역순도 해당 배열 위치에 표시됩니다.',
+    'members[0].to가 from보다 빠름 → 종료일을 시작일 이후로 수정하세요. 양 끝 포함 기간의 중복도 해소하세요.'
+  ].forEach(text => invalidExamples.append(node('li', text)));
+  universeHelp.append(invalidExamples); portfolioFields.append(universeHelp);
+  const portfolioPreview = node('section', null, 'sw-portfolio-preview');
+  portfolioPreview.setAttribute('aria-label', '포트폴리오 입력 검증 미리보기');
+  const portfolioPreviewResult = node('div'); portfolioPreviewResult.setAttribute('role', 'status'); portfolioPreviewResult.setAttribute('aria-live', 'polite');
+  const portfolioPreviewNote = node('p', '입력 형식·범위만 점검합니다. 실제 시장 구성·거래일 완전성·종목별 일봉·지표 준비 상태는 미확인입니다. 서버가 실행 시 최종 검증합니다.', 'sw-muted');
+  portfolioPreviewNote.id = 'sw-portfolio-preview-note';
+  portfolioPreview.append(node('h4', '입력 검증 미리보기'), portfolioPreviewNote,
+    button('입력 미리보기 다시 확인', renderPortfolioPreview), portfolioPreviewResult);
+  portfolioFields.append(portfolioPreview);
+  const portfolioPreviewFields = {symbol, startDate:start, endDate:end, executionMode:mode, initialCapital:capital,
+    commissionRate:commission, taxRate:tax, slippageRate:slippage, universe};
+  function currentPortfolioPreview() {
+    return portfolioInputPreview({symbol:selected?.strategy?.composition ? symbol.value.trim() : '', startDate:start.value, endDate:end.value,
+      executionMode:mode.value, initialCapital:capital.value, commissionRate:commission.value, taxRate:tax.value, slippageRate:slippage.value, universe:universe.value},
+    {needsUniverse:!!selected?.strategy?.portfolio || !!selected?.strategy?.composition?.selection,
+      symbolRequired:!!selected?.strategy?.composition && !selected.strategy.composition.selection});
+  }
+  function renderPortfolioPreview() {
+    const active = !!selected?.strategy?.portfolio || !!selected?.strategy?.composition;
+    portfolioPreview.hidden = !active;
+    universeHelp.hidden = !selected?.strategy?.portfolio && !selected?.strategy?.composition?.selection;
+    portfolioPreviewResult.replaceChildren();
+    Object.values(portfolioPreviewFields).forEach(input => { input.removeAttribute('aria-invalid'); input.removeAttribute('aria-describedby'); });
+    if (!active) return;
+    const preview = currentPortfolioPreview();
+    if (preview.issues.length) {
+      portfolioPreviewResult.append(node('p', `입력 수정 필요 · ${preview.issues.length}건 (위치는 JSON의 0번부터 시작하는 배열 번호)`, 'sw-error'));
+      const list = node('ul');
+      preview.issues.slice(0, 20).forEach((issue, index) => {
+        const row = node('li'), id = `sw-portfolio-issue-${index}`;
+        const text = node('span', `${validationFieldLabels[issue.field]} · ${issue.path}: ${issue.message}`); text.id = id;
+        const input = portfolioPreviewFields[issue.field];
+        input.setAttribute('aria-invalid', 'true');
+        input.setAttribute('aria-describedby', [input.getAttribute('aria-describedby'), id, portfolioPreviewNote.id].filter(Boolean).join(' '));
+        row.append(text, button('입력 위치로 이동', () => input.focus())); list.append(row);
+      });
+      portfolioPreviewResult.append(list);
+      if (preview.issues.length > 20) portfolioPreviewResult.append(node('p', '앞의 20건을 표시합니다. 수정하면 나머지 오류 위치도 다시 확인할 수 있습니다.', 'sw-muted'));
+    } else {
+      portfolioPreviewResult.append(node('p', '현재 점검한 입력 형식·범위에서 오류 없음 · 실제 데이터 준비 미확인', 'sw-preview-status'));
+      if (preview.summary) portfolioPreviewResult.append(node('p', `입력 자료: 거래일 ${preview.summary.dates}개 · 고유 종목 ${preview.summary.symbols}개 · 출처: ${preview.summary.source}`, 'sw-muted'));
+    }
+  }
   const readinessPanel = node('section', null, 'sw-readiness');
   readinessPanel.setAttribute('aria-label', '실행 전 데이터 준비 상태');
   const readinessScope = node('p', '', 'sw-muted');
@@ -858,26 +1115,38 @@
     }
     renderReadiness(); sync();
   }
-  const runButton = button('선택 버전 백테스트 실행', () => operation('저장된 버전으로 백테스트 실행 중…', async () => {
-    if (!selected) throw new Error('저장된 전략을 선택하세요.');
-    if (supportsReadiness(selected) && !readiness.canRun(readinessKey())) throw new Error('현재 실행 입력의 데이터 준비 상태와 주의사항을 먼저 확인하세요.');
-    const isComposite=!!selected.strategy.composition;
-    const isPortfolio=!!selected.strategy.portfolio || isComposite;
-    const needsUniverse=!!selected.strategy.portfolio || !!selected.strategy.composition?.selection;
-    const symbolRequired=!selected.strategy.portfolio && !selected.strategy.composition?.selection;
-    if (((symbolRequired || (isComposite && symbol.value.trim())) && !/^[A-Za-z0-9]{1,32}$/.test(symbol.value.trim())) || !start.value || !end.value || !mode.value)
-      throw new Error('종목 코드(영문·숫자), 시작일, 종료일, 체결 방식을 모두 입력하세요.');
-    if (start.value > end.value) throw new Error('종료일은 시작일보다 빠를 수 없습니다.');
-    const body={version:selected.version,startDate:start.value,endDate:end.value,executionMode:mode.value};
-    if(isPortfolio){
-      if(!capital.value||[commission,tax,slippage].some(x=>x.value.trim()===''))throw new Error('초기자금과 비용률을 모두 입력하세요.');
-      Object.assign(body,{initialCapital:Number(capital.value),commissionRate:percentToRate(commission.value),taxRate:percentToRate(tax.value),slippageRate:percentToRate(slippage.value)});
-      if(needsUniverse)try{body.universe=JSON.parse(universe.value);}catch{throw new Error('시장·거래일 자료를 올바른 JSON으로 입력하세요.');}
-    }else body.symbol=symbol.value.trim();
-    if(isComposite&&symbol.value.trim())body.symbol=symbol.value.trim();
-    const result = await api(`/api/strategies/${selected.id}/${isComposite?'composite-backtests':isPortfolio?'portfolio-backtests':'backtests'}`, 'POST', body);
-    renderResult(result); await loadRuns(false); notify(`실행 #${result.id} 결과가 저장되었습니다. 상태: ${statusLabel(result.status)}`);
-  }), 'sw-primary');
+  const runButton = button('선택 버전 백테스트 실행', () => {
+    if (working) return;
+    if (selected?.strategy?.portfolio || selected?.strategy?.composition) {
+      renderPortfolioPreview();
+      const preview = currentPortfolioPreview();
+      if (preview.issues.length) {
+        const first = preview.issues[0];
+        notify(`${validationFieldLabels[first.field]} (${first.path}) · ${first.message}`, true);
+        portfolioPreviewFields[first.field].focus(); return;
+      }
+    }
+    return operation('저장된 버전으로 백테스트 실행 중…', async () => {
+      if (!selected) throw new Error('저장된 전략을 선택하세요.');
+      if (supportsReadiness(selected) && !readiness.canRun(readinessKey())) throw new Error('현재 실행 입력의 데이터 준비 상태와 주의사항을 먼저 확인하세요.');
+      const isComposite=!!selected.strategy.composition;
+      const isPortfolio=!!selected.strategy.portfolio || isComposite;
+      const needsUniverse=!!selected.strategy.portfolio || !!selected.strategy.composition?.selection;
+      const symbolRequired=!selected.strategy.portfolio && !selected.strategy.composition?.selection;
+      if (((symbolRequired || (isComposite && symbol.value.trim())) && !/^[A-Za-z0-9]{1,32}$/.test(symbol.value.trim())) || !start.value || !end.value || !mode.value)
+        throw new Error('종목 코드(영문·숫자), 시작일, 종료일, 체결 방식을 모두 입력하세요.');
+      if (start.value > end.value) throw new Error('종료일은 시작일보다 빠를 수 없습니다.');
+      const body={version:selected.version,startDate:start.value,endDate:end.value,executionMode:mode.value};
+      if(isPortfolio){
+        if(!capital.value||[commission,tax,slippage].some(x=>x.value.trim()===''))throw new Error('초기자금과 비용률을 모두 입력하세요.');
+        Object.assign(body,{initialCapital:Number(capital.value),commissionRate:percentToRate(commission.value),taxRate:percentToRate(tax.value),slippageRate:percentToRate(slippage.value)});
+        if(needsUniverse)try{body.universe=JSON.parse(universe.value);}catch{throw new Error('시장·거래일 자료를 올바른 JSON으로 입력하세요.');}
+      }else body.symbol=symbol.value.trim();
+      if(isComposite&&symbol.value.trim())body.symbol=symbol.value.trim();
+      const result = await api(`/api/strategies/${selected.id}/${isComposite?'composite-backtests':isPortfolio?'portfolio-backtests':'backtests'}`, 'POST', body);
+      renderResult(result); await loadRuns(false); notify(`실행 #${result.id} 결과가 저장되었습니다. 상태: ${statusLabel(result.status)}`);
+    });
+  }, 'sw-primary');
   renderReadiness();
   run.append(runTarget, runFields, portfolioFields, readinessPanel, node('p', '저장한 조건과 로컬 일봉 데이터로 계산하며 AI 토큰을 사용하지 않습니다. 필요한 이력 데이터가 없으면 거래가 없거나 실행이 제한될 수 있습니다.', 'sw-muted'), runButton);
   const results = block('5. 결과와 실행 이력');

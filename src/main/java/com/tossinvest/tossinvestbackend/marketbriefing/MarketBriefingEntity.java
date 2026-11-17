@@ -8,9 +8,12 @@ import java.time.LocalDate;
 public class MarketBriefingEntity {
     @Id private LocalDate briefingDate;
     @Lob @Column(nullable=false) private String snapshotJson;
+    @Lob private String snapshotHistoryJson;
     @Version private Long version;
     protected MarketBriefingEntity(){ }
     MarketBriefingEntity(LocalDate date,String json){briefingDate=date;snapshotJson=json;}
     public String getSnapshotJson(){return snapshotJson;}
     public void setSnapshotJson(String value){snapshotJson=value;}
+    public String getSnapshotHistoryJson(){return snapshotHistoryJson;}
+    public void setSnapshotHistoryJson(String value){snapshotHistoryJson=value;}
 }

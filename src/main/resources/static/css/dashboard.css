@@ -252,6 +252,30 @@ h1, h2 {
   letter-spacing: 0;
 }
 
+.account-toolbar-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.account-toolbar .refresh-btn[aria-pressed="true"] {
+  border-color: var(--accent);
+  background: var(--soft);
+  color: var(--accent);
+}
+
+.account-presentation-status {
+  margin: 0 0 20px;
+  color: var(--ink-dim);
+  font-size: 13px;
+  line-height: 1.6;
+}
+
+.holdings-table .presentation-blank-row {
+  height: 132px;
+  pointer-events: none;
+}
+
 .panel-hint, .quote-block-label {
   line-height: 1.6;
 }
@@ -342,6 +366,10 @@ h1, h2 {
   display: grid;
   grid-template-columns: minmax(280px, .8fr) minmax(0, 1.5fr);
   gap: 24px;
+}
+
+.main-grid[hidden] {
+  display: none !important;
 }
 
 .panel {

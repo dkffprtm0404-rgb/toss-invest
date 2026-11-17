@@ -17,7 +17,7 @@ function briefing(overrides = {}) {
   };
 }
 
-async function dashboard(initial, run, clockTime) {
+async function dashboard(initial, run, clockTime, setup) {
   const browser = await chromium.launch({ headless: true, channel: 'msedge' });
   const state = { latest: initial, reads: [], posts: [], errors: [], respond: route => route.fulfill({ json: briefing({ date: '2026-11-05' }) }) };
   try {
@@ -51,6 +51,7 @@ async function dashboard(initial, run, clockTime) {
       if (url.pathname === '/api/scalping/stats') return route.fulfill({ json: { totalTrades: 0, winRate: 0, cumReturn: 0 } });
       return route.fulfill({ json: [] });
     });
+    if (setup) await setup(page);
     await page.goto('http://briefing.test/');
     const panel = page.getByRole('region', { name: '장전 AI 시장 요약', exact: true });
     await panel.getByRole('heading', { name: '장전 AI 시장 요약', exact: true }).waitFor();
@@ -58,6 +59,76 @@ async function dashboard(initial, run, clockTime) {
     assert.deepEqual(state.errors, []);
   } finally { await browser.close(); }
 }
+
+test('briefing visibility stays collapsed across tab changes, refreshes and reloads', async () => {
+  await dashboard(briefing(), async (page, panel, state) => {
+    await panel.getByText('전일 코스피는 1% 하락했습니다.', { exact: true }).waitFor();
+    const expandedHeight = await panel.evaluate(element => element.getBoundingClientRect().height);
+    const toggle = panel.getByRole('button', { name: '접기', exact: true });
+    await toggle.click();
+    const expand = panel.getByRole('button', { name: '펼치기', exact: true });
+    assert.equal(await expand.getAttribute('aria-expanded'), 'false');
+    assert.equal(await panel.locator('#marketBriefingContent').isVisible(), false);
+    assert.equal(await panel.getByRole('button', { name: '오늘 브리핑 생성', exact: true }).isVisible(), false);
+    assert.ok(await panel.evaluate(element => element.getBoundingClientRect().height) < expandedHeight / 2);
+    await page.clock.fastForward(60000);
+    await page.waitForFunction(() => document.querySelector('#marketBriefing').getAttribute('aria-busy') === 'false');
+    assert.equal(await panel.locator('#marketBriefingContent').isVisible(), false);
+    await page.getByRole('tab', { name: '계좌·모의매매', exact: true }).click();
+    await page.getByRole('button', { name: '계좌·보유종목 숨기기', exact: true }).click();
+    await page.getByRole('tab', { name: '투자 전략', exact: true }).click();
+    await page.reload();
+    assert.equal(await expand.getAttribute('aria-expanded'), 'false');
+    assert.equal(await panel.locator('#marketBriefingContent').isVisible(), false);
+    await expand.click();
+    await panel.getByText('전일 코스피는 1% 하락했습니다.', { exact: true }).waitFor();
+    assert.equal(await toggle.getAttribute('aria-expanded'), 'true');
+    await panel.getByRole('button', { name: '저장본 새로고침', exact: true }).click();
+    await page.waitForFunction(() => document.querySelector('#marketBriefing').getAttribute('aria-busy') === 'false');
+    assert.equal(await panel.locator('#marketBriefingContent').isVisible(), true);
+    await page.reload();
+    await panel.getByText('전일 코스피는 1% 하락했습니다.', { exact: true }).waitFor();
+    assert.equal(await toggle.getAttribute('aria-expanded'), 'true');
+    await page.getByRole('tab', { name: '계좌·모의매매', exact: true }).click();
+    assert.equal(await page.locator('#account-overview').isVisible(), false);
+    await page.getByRole('button', { name: '계좌·보유종목 보기', exact: true }).click();
+    assert.equal(await toggle.getAttribute('aria-expanded'), 'true');
+    assert.deepEqual(state.posts, []);
+  }, '2026-11-04T23:35:00Z');
+});
+
+test('a pending briefing generation does not reopen the collapsed panel', async () => {
+  await dashboard(briefing(), async (page, panel, state) => {
+    await panel.getByText('전일 코스피는 1% 하락했습니다.', { exact: true }).waitFor();
+    let release;
+    const pending = new Promise(resolve => { release = resolve; });
+    state.respond = async route => { await pending; return route.fulfill({ json: briefing({ date: '2026-11-05' }) }); };
+    try {
+      await panel.getByRole('button', { name: '오늘 브리핑 생성', exact: true }).click();
+      await panel.getByRole('button', { name: '접기', exact: true }).click();
+    } finally { release(); }
+    await page.waitForFunction(() => document.querySelector('#marketBriefing').getAttribute('aria-busy') === 'false');
+    assert.equal(await panel.locator('#marketBriefingContent').isVisible(), false);
+    assert.equal(await panel.getByRole('button', { name: '펼치기', exact: true }).isEnabled(), true);
+  });
+});
+
+test('briefing visibility works with blocked storage and fits a mobile screen', async () => {
+  await dashboard(briefing(), async (page, panel) => {
+    await panel.getByText('전일 코스피는 1% 하락했습니다.', { exact: true }).waitFor();
+    await page.setViewportSize({ width: 375, height: 844 });
+    await panel.getByRole('button', { name: '접기', exact: true }).click();
+    assert.equal(await panel.locator('#marketBriefingContent').isVisible(), false);
+    assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1), true);
+    await panel.screenshot({ path: 'build/market-briefing-collapsed-mobile.png' });
+    await panel.getByRole('button', { name: '펼치기', exact: true }).focus();
+    await page.keyboard.press('Enter');
+    assert.equal(await panel.locator('#marketBriefingContent').isVisible(), true);
+    assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1), true);
+  }, undefined, page => page.addInitScript(() => {
+    Object.defineProperty(window, 'localStorage', { get() { throw new DOMException('Storage blocked', 'SecurityError'); } });
+  }));
+});
 
 test('saved dates, quotes and cited observations remain visible across tabs and at 375px', async () => {
   const snapshot = briefing();

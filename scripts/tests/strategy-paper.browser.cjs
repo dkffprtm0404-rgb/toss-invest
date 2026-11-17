@@ -91,3 +91,88 @@ test('refresh shows actionable provider failure and clears it after successful r
   assert.match(await page.locator('.sp-detail').innerText(),/보존한 일봉 200개/);
  }finally{await browser.close();}
 });
+
+async function isolatedPaperPage(browser, respond) {
+ const page=await browser.newPage();page.setDefaultTimeout(5000);const errors=[];
+ page.on('pageerror',error=>errors.push(error.message));
+ await page.route('**/*',async route=>{
+  const url=new URL(route.request().url());
+  if(url.pathname==='/')return route.fulfill({contentType:'text/html',body:'<!doctype html><html lang="ko"><main><button id="accountTab">계좌</button><section id="strategyPaper"></section></main></html>'});
+  return respond(route,url);
+ });
+ await page.goto('http://paper.test/');
+ await page.addScriptTag({content:fs.readFileSync(path.join(root,'js/strategy-paper.js'),'utf8')});
+ await page.waitForFunction(()=>!document.getElementById('strategyPaper').hasAttribute('aria-busy'));
+ return {page,errors};
+}
+
+async function selectAndFillPaperInputs(page) {
+ await page.evaluate(()=>window.StrategyPaper.select({id:31,version:2,strategy:{schemaVersion:2,name:'단일 전략 A'}}));
+ await page.getByLabel('종목 코드',{exact:true}).fill('005930');
+ await page.getByLabel('체결 방식',{exact:true}).selectOption('NEXT_DAY_OPEN');
+ for(const [label,value] of [['초기자금 (원)','1000'],['매수 비중 (%)','100'],['수수료율 (%)','0'],['매도세율 (%)','0'],['슬리피지율 (%)','0']])
+  await page.getByLabel(label,{exact:true}).fill(value);
+}
+
+test('unsupported selection clears a previous paper target and direct submits cannot reuse it',async()=>{
+ const browser=await chromium.launch({headless:true,channel:'msedge'});
+ try {
+  const posts=[];
+  const {page,errors}=await isolatedPaperPage(browser,async(route,url)=>{
+   if(route.request().method()==='POST'&&url.pathname==='/api/strategy-paper/runs'){
+    posts.push(route.request().postDataJSON());return route.fulfill({status:503,json:{message:'합성 시작 실패'}});
+   }
+   return route.fulfill({json:[]});
+  });
+  const start=page.getByRole('button',{name:'모의매매 시작',exact:true});
+  assert.equal(await start.isDisabled(),true);
+  await selectAndFillPaperInputs(page);await start.click();
+  await page.getByRole('status').filter({hasText:'합성 시작 실패'}).waitFor();
+  assert.equal(posts.length,1);
+  for(const strategy of [{schemaVersion:3,portfolio:{}},{schemaVersion:4,composition:{}},{schemaVersion:3},{schemaVersion:4}]){
+   await page.evaluate(strategy=>window.StrategyPaper.select({id:32,version:1,strategy}),strategy);
+   assert.equal(await start.isDisabled(),true);
+   assert.equal(await page.locator('.sp-target').innerText(),'선택된 전략 없음');
+   await page.locator('#strategyPaper form').evaluate(form=>form.dispatchEvent(new Event('submit',{bubbles:true,cancelable:true})));
+   assert.equal(posts.length,1,'a direct submit after B must not start the former A');
+  }
+  await selectAndFillPaperInputs(page);await start.click();
+  await page.getByRole('status').filter({hasText:'합성 시작 실패'}).waitFor();
+  assert.equal(posts.length,2);assert.notEqual(posts[0].requestId,posts[1].requestId);
+  assert.equal(posts[1].strategyId,31);assert.equal(posts[1].version,2);assert.deepEqual(errors,[]);
+ }finally{await browser.close();}
+});
+
+test('late paper start success or failure cannot restore an unsupported selection',async()=>{
+ const browser=await chromium.launch({headless:true,channel:'msedge'});
+ try {
+  for(const outcome of ['success','failure']){
+   let release;const gate=new Promise(resolve=>{release=resolve;});const posts=[];
+   const {page,errors}=await isolatedPaperPage(browser,async(route,url)=>{
+    if(route.request().method()==='POST'&&url.pathname==='/api/strategy-paper/runs'){
+     const body=route.request().postDataJSON();posts.push(body);await gate;
+     if(outcome==='failure')return route.fulfill({status:503,json:{message:'합성 늦은 실패'}});
+     return route.fulfill({json:{id:41,status:'RUNNING',market:'KOSPI',definition:body,
+      strategy:{id:31,version:2,strategy:{schemaVersion:2,name:'단일 전략 A'}},
+      state:{firstTradingDate:'2026-03-03',dataStatus:'WAITING_DATA',cash:1000,equity:1000,trades:[],logs:[],curve:[]}}});
+    }
+    return route.fulfill({json:[]});
+   });
+   try {
+    await selectAndFillPaperInputs(page);
+    const sent=page.waitForRequest(request=>request.method()==='POST'&&new URL(request.url()).pathname==='/api/strategy-paper/runs');
+    await page.getByRole('button',{name:'모의매매 시작',exact:true}).click();await sent;
+    await page.evaluate(()=>window.StrategyPaper.select({id:32,version:1,strategy:{schemaVersion:3,name:'미지원 B',portfolio:{}}}));
+    release();await page.waitForFunction(()=>!document.getElementById('strategyPaper').hasAttribute('aria-busy'));
+    assert.equal(await page.getByRole('button',{name:'모의매매 시작',exact:true}).isDisabled(),true);
+    assert.equal(await page.locator('.sp-target').innerText(),'선택된 전략 없음');
+    assert.match(await page.locator('.sp-notice').innerText(),/단일 종목 전략/);
+    assert.doesNotMatch(await page.locator('.sp-notice').innerText(),/합성 늦은 실패|#41.*시작/);
+    assert.equal(await page.getByRole('heading',{name:'모의매매 #41',exact:true}).count(),0);
+    await page.locator('#strategyPaper form').evaluate(form=>form.dispatchEvent(new Event('submit',{bubbles:true,cancelable:true})));
+    assert.equal(posts.length,1,'the already sent A request is not cancelled, but B must not add a start');
+    assert.deepEqual(errors,[]);
+   }finally{release();await page.close();}
+  }
+ }finally{await browser.close();}
+});
