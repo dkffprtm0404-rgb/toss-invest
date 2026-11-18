@@ -30,6 +30,8 @@ docs/
 - [미완료 기능 마무리 실행 계획 — 2026-11-12](plans/2026-11-12-completion-plan.md)
 - [대시보드 브리핑 접기·계좌 숨김 계획과 기록 — 2026-11-16](plans/dashboard-visibility-plan.md)
 - [대시보드 발표용 공백 처리 계획과 기록 — 2026-11-16](plans/dashboard-presentation-plan.md)
+- [TossInvest 첫 화면 구성 설계안 — 2026-11-18](plans/2026-11-18-signature-dashboard-design.md)
+- [전략 데스크 구현 계획 — 2026-11-18](plans/2026-11-18-strategy-desk-implementation.md)
 
 ## 기능 명세·API 계약
 

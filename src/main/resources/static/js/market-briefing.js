@@ -3,6 +3,7 @@
   const root = document.getElementById('marketBriefing');
   if (!root) return;
   const content = document.getElementById('marketBriefingContent');
+  const overview = document.getElementById('marketBriefingOverview');
   const dateLabel = document.getElementById('marketBriefingDate');
   const badge = document.getElementById('marketBriefingBadge');
   const status = document.getElementById('marketBriefingStatus');
@@ -20,8 +21,11 @@
     toggle.textContent = collapsed ? '펼치기' : '접기';
     toggle.setAttribute('aria-expanded', String(!collapsed));
   }
-  let savedCollapsed = false;
-  try { savedCollapsed = localStorage.getItem(collapsedKey) === 'true'; } catch { /* Storage can be blocked. */ }
+  let savedCollapsed = body.hidden;
+  try {
+    const saved = localStorage.getItem(collapsedKey);
+    if (saved !== null) savedCollapsed = saved === 'true';
+  } catch { /* Storage can be blocked. */ }
   setCollapsed(savedCollapsed);
   toggle.addEventListener('click', () => {
     const collapsed = !body.hidden;
@@ -74,6 +78,30 @@
       node('span', ` · ${source.kind === 'NEWS' ? '기사 작성' : '시세 기준'} ${timestamp(source.observedAt)}`));
     return reference;
   }
+  function quoteRow(source, className) {
+    const quote = node('div', null, className);
+    const label = node('dt');
+    label.append(safeLink(source, source.label || source.title || source.id));
+    const value = number(source.value), change = number(source.changeRate);
+    const amount = value === null ? '자료 없음' : value.toLocaleString('ko-KR', { maximumFractionDigits: 4 });
+    const result = node('dd', amount + (value !== null && source.unit ? ` ${source.unit}` : ''), 'mb-quote-value');
+    if (change !== null) {
+      const delta = node('span', change.toLocaleString('en-US', {
+        style: 'percent', minimumFractionDigits: 2, maximumFractionDigits: 2, signDisplay: 'exceptZero'
+      }), 'mb-change');
+      delta.dataset.direction = change > 0 ? 'up' : change < 0 ? 'down' : 'flat';
+      result.append(delta);
+    }
+    quote.append(label, result, node('dd', `시세 기준 ${timestamp(source.observedAt)}`, 'mb-observed'));
+    return quote;
+  }
+  function renderOverview(quotes = []) {
+    if (!overview) return;
+    const byId = new Map(quotes.map(quote => [quote.id, quote]));
+    const localQuotes = ['KOSPI', 'KOSDAQ', 'USDKRW'].map(id => byId.get(id)).filter(Boolean);
+    overview.replaceChildren(...localQuotes.map(source => quoteRow(source, 'mb-overview-row')));
+    overview.hidden = localQuotes.length === 0;
+  }
   function sync() {
     refresh.disabled = busy;
     generate.disabled = busy;
@@ -86,6 +114,7 @@
   }
   function empty() {
     retry = false;
+    renderOverview();
     dateLabel.textContent = '아직 생성된 브리핑 없음';
     badge.textContent = '저장본 없음';
     badge.removeAttribute('data-status');
@@ -108,30 +137,17 @@
     if (meta.childElementCount) content.append(meta);
 
     if (data.status === 'CLOSED') {
+      renderOverview();
       content.append(node('p', '휴장일에는 브리핑을 생성하지 않습니다.', 'mb-empty'));
     } else {
       const sources = Array.isArray(data.sources) ? data.sources.filter(source => source && typeof source === 'object') : [];
       const byId = new Map(sources.map(source => [source.id, source]));
       if (sources.length) content.append(node('p', '브리핑 날짜와 시세·기사 기준일은 다를 수 있습니다. 확정 종가와 자료 기준 시각 이전의 뉴스를 사용합니다.', 'mb-empty'));
       const quotes = sources.filter(source => source.kind === 'QUOTE');
+      renderOverview(quotes);
       if (quotes.length) {
         const strip = node('dl', null, 'mb-quotes');
-        quotes.forEach(source => {
-          const quote = node('div', null, 'mb-quote');
-          const label = node('dt'); label.append(safeLink(source, source.label || source.title || source.id));
-          const value = number(source.value), change = number(source.changeRate);
-          const amount = value === null ? '자료 없음' : value.toLocaleString('ko-KR', { maximumFractionDigits: 4 });
-          const result = node('dd', amount + (value !== null && source.unit ? ` ${source.unit}` : ''), 'mb-quote-value');
-          if (change !== null) {
-            const delta = node('span', change.toLocaleString('en-US', {
-              style: 'percent', minimumFractionDigits: 2, maximumFractionDigits: 2, signDisplay: 'exceptZero'
-            }), 'mb-change');
-            delta.dataset.direction = change > 0 ? 'up' : change < 0 ? 'down' : 'flat';
-            result.append(delta);
-          }
-          quote.append(label, result, node('dd', `시세 기준 ${timestamp(source.observedAt)}`, 'mb-observed'));
-          strip.append(quote);
-        });
+        strip.append(...quotes.map(source => quoteRow(source, 'mb-quote')));
         content.append(strip);
       }
       const items = Array.isArray(data.items) ? data.items.filter(item => item && typeof item === 'object') : [];

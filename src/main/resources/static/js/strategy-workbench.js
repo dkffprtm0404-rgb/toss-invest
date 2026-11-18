@@ -345,17 +345,19 @@
     const item = node('button', text, cls);
     item.type = 'button'; item.addEventListener('click', action); return item;
   };
-  const status = node('p', '연결 상태 확인 중…', 'sw-muted'); status.setAttribute('role', 'status');
+  const status = node('p', '연결 상태 확인 중…', 'sw-muted sw-connection-status'); status.setAttribute('role', 'status');
   const notice = node('p', '', 'sw-notice'); notice.setAttribute('role', 'status'); notice.setAttribute('aria-live', 'polite');
+  const desk = root.querySelector('.sw-desk-writer');
   const controls = node('fieldset', null, 'sw-controls');
   controls.append(node('legend', '전략 작성과 백테스트', 'sw-sr-only'));
+  const writer = desk ? node('fieldset', null, 'sw-desk-controls') : controls;
+  if (desk) writer.setAttribute('aria-labelledby', 'strategyWriteTitle');
   const heading = node('header', null, 'sw-heading');
   heading.append(
     node('span', 'STRATEGY WORKBENCH', 'sw-eyebrow'),
     node('h2', '내 말로 만드는 투자 전략'),
     node('p', '매수부터 매도까지, 생각한 조건을 기록하고 과거 데이터로 확인하세요.', 'sw-intro')
   );
-  root.append(heading, status, notice, controls);
   const steps = [
     ['strategy-write','1. 전략 작성','매수·매도 조건과 손절 기준을 문장으로 입력하세요.'],
     ['strategy-edit','2. 확인·저장','해석된 조건을 검증하고 확인한 뒤 저장하세요.'],
@@ -370,15 +372,18 @@
     link.href = `#${id}`;
     navigation.append(link);
   });
-  root.insertBefore(navigation, status);
+  if (desk) {
+    desk.append(writer, navigation, status, notice);
+    root.append(heading, controls);
+  } else root.append(heading, navigation, status, notice, controls);
   let blockIndex = 0;
-  function block(title) {
+  function block(title, parent = controls) {
     const section = node('section', null, 'sw-block');
     const [id, , description] = steps[blockIndex++];
     section.id = id;
     section.tabIndex = -1;
     section.append(node('h3', title), node('p', description, 'sw-section-help'));
-    controls.append(section);
+    parent.append(section);
     return section;
   }
   function field(parent, labelText, value, onInput, options) {
@@ -398,6 +403,12 @@
     wrap.append(input); parent.append(wrap); return input;
   }
   function notify(message, error = false) { notice.textContent = message; notice.classList.toggle('sw-error', error); }
+  function setControlsBusy(busy) {
+    controls.disabled = busy;
+    writer.disabled = busy;
+    (desk || root).setAttribute('aria-busy', String(busy));
+    if (desk) controls.setAttribute('aria-busy', String(busy));
+  }
   async function api(url, method = 'GET', data) {
     const response = await fetch(url, { method, headers: method === 'GET' ? {} : { 'Content-Type': 'application/json', 'X-Strategy-Local': '1' },
       ...(data === undefined ? {} : { body: JSON.stringify(data) }) });
@@ -415,12 +426,13 @@
   async function operation(message, action) {
     if (working) return;
     const owner = state; working = true;
-    state.busy = true; controls.disabled = true; root.setAttribute('aria-busy', 'true'); notify(message); sync();
+    state.busy = true; setControlsBusy(true); notify(message); sync();
     try { await action(); }
     catch (error) { notify(error.message || '요청 중 오류가 발생했습니다.', true); }
-    finally { working = false; owner.busy = false; state.busy = false; controls.disabled = false; root.setAttribute('aria-busy', 'false'); sync(); }
+    finally { working = false; owner.busy = false; state.busy = false; setControlsBusy(false); sync(); }
   }
-  const write = block('1. 전략을 설명해 주세요');
+  const write = block('1. 전략을 설명해 주세요', writer);
+  write.firstElementChild.id = 'strategyWriteTitle';
   const prompt = field(write, '전략 원문', '', sync, { textarea: true, maxLength: 6000,
     placeholder: '예: 5일 이동평균선이 20일 이동평균선을 상향 돌파하면 매수하고, 매수가보다 5% 하락하면 손절해 줘.\n여러 전략은 제목이나 번호로 구분해 주세요.' });
   const interpret = button('Codex로 조건 해석', () => operation('Codex가 조건을 정리하고 있습니다. 최대 2분 정도 걸릴 수 있습니다…', async () => {
@@ -435,9 +447,15 @@
     await selectDraft(0);
     notify(`개별 ${result.items.length}개${result.total ? '와 전체 토탈' : ''} 초안을 만들었습니다. 선택한 초안의 조건을 확인하세요.`);
   }), 'sw-primary');
-  write.append(interpret, button('연결 상태 다시 확인', () => operation('연결 확인 중…', checkStatus)));
-  write.append(node('p', '개인 PC의 Codex ChatGPT 구독 로그인을 사용합니다. API 과금으로 전환하지 않습니다.', 'sw-muted'));
-  write.append(node('p', '전체 원문을 다시 해석하면 초안 목록이 새 결과로 교체됩니다. 초안은 새로고침하면 사라지므로 필요한 전략은 먼저 저장하세요.', 'sw-muted'));
+  const writeActions = node('div', null, 'sw-write-actions');
+  writeActions.append(interpret, button('연결 상태 다시 확인', () => operation('연결 확인 중…', checkStatus)));
+  write.append(writeActions);
+  const writeNotes = desk ? node('div', null, 'sw-write-notes') : write;
+  writeNotes.append(
+    node('p', '개인 PC의 Codex ChatGPT 구독 로그인을 사용합니다. API 과금으로 전환하지 않습니다.', 'sw-muted'),
+    node('p', '전체 원문을 다시 해석하면 초안 목록이 새 결과로 교체됩니다. 초안은 새로고침하면 사라지므로 필요한 전략은 먼저 저장하세요.', 'sw-muted')
+  );
+  if (desk) heading.append(writeNotes);
   const batchIssues = node('div', null, 'sw-issues'); batchIssues.setAttribute('aria-live', 'polite'); write.append(batchIssues);
   const edit = block('2. 조건을 확인하고 저장하세요');
   const draftList = node('div', null, 'sw-list'); edit.append(draftList);

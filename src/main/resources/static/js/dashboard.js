@@ -1,6 +1,9 @@
 // Keep both screens mounted so switching tabs preserves drafts, results and quotes.
 (function initDashboardTabs() {
   const tabs = [...document.querySelectorAll('.dashboard-tabs [role="tab"]')];
+  const briefing = document.getElementById('marketBriefing');
+  const strategyBriefingSlot = document.getElementById('strategyBriefingSlot');
+  const accountBriefingSlot = document.getElementById('accountBriefingSlot');
   function activate(target) {
     tabs.forEach(tab => {
       const active = tab === target;
@@ -8,6 +11,8 @@
       tab.tabIndex = active ? 0 : -1;
       document.getElementById(tab.getAttribute('aria-controls')).hidden = !active;
     });
+    const slot = target.id === 'strategyTab' ? strategyBriefingSlot : accountBriefingSlot;
+    if (briefing && slot && briefing.parentElement !== slot) slot.append(briefing);
     document.getElementById(target.getAttribute('aria-controls')).scrollIntoView({block: 'start'});
   }
   tabs.forEach((tab, index) => {

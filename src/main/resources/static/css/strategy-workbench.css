@@ -17,23 +17,24 @@
   font-weight: 700;
 }
 
-#strategyWorkbench h2 {
+#strategyWorkbench :where(.sw-heading, fieldset) h2 {
   font: 700 32px/1.35 system-ui, sans-serif;
   margin-top: 12px;
   letter-spacing: -.04em;
 }
 
-#strategyWorkbench h3 {
+#strategyWorkbench :where(fieldset) h3 {
   font-size: 18px;
   margin: 0 0 16px;
 }
 
-#strategyWorkbench h4 {
+#strategyWorkbench :where(fieldset) h4 {
   font-size: 15px;
   margin: 12px 0;
 }
 
-#strategyWorkbench p {
+#strategyWorkbench :where(.sw-heading, .sw-desk-writer, fieldset) p,
+#strategyWorkbench p:where(.sw-connection-status, .sw-notice) {
   margin: 10px 0;
 }
 
@@ -94,7 +95,7 @@
   min-width: 0;
 }
 
-#strategyWorkbench .sw-block:nth-of-type(3), #strategyWorkbench .sw-block:nth-of-type(4) {
+#strategyWorkbench :is(#strategy-library, #strategy-run) {
   grid-column: auto;
   align-self: start;
 }
@@ -141,7 +142,7 @@
   resize: vertical;
 }
 
-#strategyWorkbench button {
+#strategyWorkbench :where(fieldset) button {
   padding: 10px 14px;
   margin: 4px 6px 4px 0;
   border: 1px solid #cccccc;
@@ -163,7 +164,7 @@
   border-color: var(--ink, #191919);
 }
 
-#strategyWorkbench button:hover:enabled {
+#strategyWorkbench :where(fieldset) button:hover:enabled {
   border-color: var(--ink, #191919);
 }
 
@@ -172,7 +173,7 @@
   border-color: var(--accent, #c43c1c);
 }
 
-#strategyWorkbench button:disabled, #strategyWorkbench fieldset:disabled button {
+#strategyWorkbench :where(fieldset) button:disabled, #strategyWorkbench fieldset:disabled button {
   opacity: .4;
   cursor: not-allowed;
 }
@@ -231,7 +232,7 @@
   flex: 1 1 180px;
 }
 
-#strategyWorkbench .sw-block:nth-of-type(4) .sw-condition {
+#strategyWorkbench #strategy-run .sw-condition {
   grid-template-columns: repeat(2,minmax(0,1fr));
 }
 
@@ -271,22 +272,22 @@
   min-width: 0;
 }
 
-#strategyWorkbench dt {
+#strategyWorkbench :where(fieldset) dt {
   color: var(--ink-dim, #666666);
   font-size: 12px;
 }
 
-#strategyWorkbench dd {
+#strategyWorkbench :where(fieldset) dd {
   margin: 6px 0 0;
   font-weight: 600;
   overflow-wrap: anywhere;
 }
 
-#strategyWorkbench details {
+#strategyWorkbench :where(fieldset) details {
   margin: 14px 0;
 }
 
-#strategyWorkbench summary {
+#strategyWorkbench :where(fieldset) summary {
   cursor: pointer;
   color: #333333;
 }
@@ -474,7 +475,7 @@
 }
 
 #strategyWorkbench .sw-block {
-  scroll-margin-top: 110px;
+  scroll-margin-top: var(--dashboard-anchor-offset, 110px);
 }
 
 #strategyWorkbench .sw-block .sw-section-help {
@@ -526,7 +527,7 @@
   cursor: pointer;
 }
 
-#strategyWorkbench button:disabled, #strategyWorkbench fieldset:disabled button {
+#strategyWorkbench :where(fieldset) button:disabled, #strategyWorkbench fieldset:disabled button {
   opacity: 1;
   background: #eeeeec;
   border-color: var(--rule, #dddddd);
@@ -566,7 +567,7 @@
   min-height: 40px;
 }
 
-#strategyWorkbench .sw-block:nth-of-type(4) .sw-condition > p {
+#strategyWorkbench #strategy-run .sw-condition > p {
   grid-column: 1/-1;
 }
 
@@ -685,7 +686,7 @@
     padding: 24px 0;
   }
 
-  #strategyWorkbench h2 {
+  #strategyWorkbench :where(.sw-heading, fieldset) h2 {
     font-size: 23px;
   }
 
@@ -708,7 +709,7 @@
     padding: 20px 0;
   }
 
-  #strategyWorkbench .sw-block:nth-of-type(4) .sw-condition {
+  #strategyWorkbench #strategy-run .sw-condition {
     grid-template-columns: 1fr;
   }
 
@@ -723,4 +724,178 @@
   #strategyWorkbench .sw-readiness .sw-metrics {
     grid-template-columns: minmax(0, 1fr);
   }
+}
+
+#strategyWorkbench .sw-desk-writer {
+  --desk-ink: #f7f9fe;
+  --desk-muted: #cbd5e4;
+  --desk-accent: #ff7955;
+  position: relative;
+  isolation: isolate;
+  min-width: 0;
+  padding: clamp(16px, 2.4vw, 28px);
+  border-radius: 14px;
+  background: #111c2d;
+  color: var(--desk-ink);
+}
+
+#strategyWorkbench .sw-desk-writer::before,
+#strategyWorkbench .sw-desk-writer::after {
+  content: '';
+  position: absolute;
+  z-index: -1;
+  pointer-events: none;
+}
+
+#strategyWorkbench .sw-desk-writer::before {
+  inset: 0;
+  border-radius: inherit;
+  background: linear-gradient(#95abc713 1px, transparent 1px),
+    linear-gradient(90deg, #95abc713 1px, transparent 1px);
+  background-size: 28px 28px;
+  mask-image: linear-gradient(110deg, transparent 25%, #000);
+}
+
+#strategyWorkbench .sw-desk-writer::after {
+  inset: 0 0 auto auto;
+  width: 29%;
+  height: min(190px, 42%);
+  border-radius: inherit;
+  clip-path: polygon(42% 0, 100% 0, 58% 100%, 0 100%);
+  background: linear-gradient(150deg, #ff795552, transparent 85%);
+}
+
+#strategyWorkbench .page-kicker { margin: 0 0 6px; }
+#strategyWorkbench .page-description { margin: 8px 0 0; }
+
+#strategyWorkbench .sw-desk-controls {
+  min-width: 0;
+  margin: 16px 0 0;
+  padding: 0;
+  border: 0;
+}
+
+#strategyWorkbench .sw-desk-controls .sw-block {
+  padding: 0;
+  border: 0;
+  background: transparent;
+}
+
+#strategyWorkbench .sw-desk-controls h3 {
+  margin: 0;
+  color: var(--desk-ink);
+  font-size: 16px;
+}
+
+#strategyWorkbench .sw-desk-writer :is(.sw-section-help, .sw-muted) {
+  margin: 4px 0 10px;
+  color: var(--desk-muted);
+  font-size: 12px;
+}
+
+#strategyWorkbench .sw-desk-writer .sw-field > span { color: var(--desk-ink); }
+#strategyWorkbench .sw-desk-writer .sw-field { margin-bottom: 0; }
+
+#strategyWorkbench .sw-desk-controls #strategy-write textarea {
+  min-height: 104px;
+  border-color: #a2b5d0;
+  border-radius: 8px;
+  background: #f8faff;
+  font-size: 16px;
+}
+
+#strategyWorkbench .sw-desk-writer .sw-write-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 10px;
+}
+
+#strategyWorkbench .sw-desk-writer .sw-write-actions button {
+  min-height: 44px;
+  padding-inline: 12px;
+  margin: 0;
+  border-radius: 7px;
+}
+
+#strategyWorkbench .sw-desk-writer button.sw-primary:enabled {
+  border-color: var(--desk-accent);
+  background: var(--desk-accent);
+  color: #152031;
+}
+
+#strategyWorkbench .sw-desk-writer button.sw-primary:hover:enabled { background: #ff967a; }
+#strategyWorkbench .sw-desk-writer .sw-write-actions button:not(.sw-primary):enabled {
+  border-color: #697a92;
+  background: transparent;
+  color: var(--desk-muted);
+}
+#strategyWorkbench .sw-desk-writer :focus-visible { outline-color: #ffb49d; }
+
+#strategyWorkbench .sw-desk-writer .sw-navigation {
+  display: grid;
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+  gap: 4px 8px;
+  margin: 18px 0 8px;
+}
+
+#strategyWorkbench .sw-desk-writer .sw-navigation a {
+  padding: 6px 2px;
+  border-top: 1px solid #697a92;
+  border-bottom: 0;
+  background: transparent;
+  color: var(--desk-muted);
+  font-size: 12px;
+  overflow-wrap: normal;
+  word-break: keep-all;
+}
+
+#strategyWorkbench .sw-desk-writer .sw-navigation a:first-child {
+  border-top-color: var(--desk-accent);
+  color: var(--desk-ink);
+}
+
+#strategyWorkbench .sw-desk-writer .sw-navigation a:hover {
+  border-top-color: var(--desk-accent);
+  background: #ffffff0e;
+  color: var(--desk-ink);
+}
+
+#strategyWorkbench .sw-desk-writer .sw-connection-status {
+  margin: 8px 0 0;
+  font-weight: 650;
+}
+
+#strategyWorkbench .sw-desk-writer .sw-notice {
+  min-height: 0;
+  padding: 8px 10px;
+  margin: 8px 0;
+  border-radius: 4px;
+  font-size: 12px;
+}
+
+#strategyWorkbench .sw-write-notes p.sw-muted { margin: 4px 0 0; }
+#strategyWorkbench .sw-desk-writer .sw-issues { color: #ffd2a0; }
+
+#strategyWorkbench .strategy-desk ~ .sw-heading { margin-top: 30px; }
+#strategyWorkbench .strategy-desk ~ .sw-controls { gap: 16px; margin-top: 20px; }
+
+#strategyWorkbench .strategy-desk ~ .sw-controls > .sw-block {
+  padding: clamp(16px, 2.2vw, 24px);
+  border: 1px solid var(--dashboard-edge, #ddd);
+  border-radius: 12px;
+}
+
+@media (max-width: 960px) {
+  #strategyWorkbench .sw-desk-writer .sw-navigation { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+}
+
+@media (max-width: 760px) {
+  #strategyWorkbench .sw-desk-controls #strategy-write textarea { min-height: 134px; }
+  #strategyWorkbench .strategy-desk ~ .sw-controls { grid-template-columns: minmax(0, 1fr); }
+}
+
+@media (max-width: 360px) {
+  #strategyWorkbench .sw-desk-controls #strategy-write textarea { min-height: 156px; }
 }

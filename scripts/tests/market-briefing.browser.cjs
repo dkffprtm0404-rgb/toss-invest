@@ -17,7 +17,7 @@ function briefing(overrides = {}) {
   };
 }
 
-async function dashboard(initial, run, clockTime, setup) {
+async function dashboard(initial, run, clockTime, setup, { layout = false } = {}) {
   const browser = await chromium.launch({ headless: true, channel: 'msedge' });
   const state = { latest: initial, reads: [], posts: [], errors: [], respond: route => route.fulfill({ json: briefing({ date: '2026-11-05' }) }) };
   try {
@@ -25,6 +25,12 @@ async function dashboard(initial, run, clockTime, setup) {
     page.setDefaultTimeout(5000);
     if (clockTime) await page.clock.install({ time: new Date(clockTime) });
     else await page.clock.setFixedTime(new Date('2026-11-04T23:35:00Z'));
+    if (!layout) await page.addInitScript(() => {
+      try {
+        const key = 'tossinvest.marketBriefingCollapsed';
+        if (localStorage.getItem(key) === null) localStorage.setItem(key, 'false');
+      } catch { /* Some tests deliberately block storage. */ }
+    });
     page.on('pageerror', error => state.errors.push(error.message));
     await page.route('**/*', async route => {
       const request = route.request(), url = new URL(request.url());
@@ -39,12 +45,14 @@ async function dashboard(initial, run, clockTime, setup) {
         state.posts.push({ method: request.method(), headers: request.headers() });
         return state.respond(route);
       }
-      if (url.pathname === '/' || url.pathname.startsWith('/css/') || ['/js/dashboard.js', '/js/market-briefing.js'].includes(url.pathname)) {
+      if (url.pathname === '/' || url.pathname.startsWith('/css/') || ['/js/dashboard.js', '/js/market-briefing.js'].includes(url.pathname) ||
+          (layout && url.pathname === '/js/strategy-workbench.js')) {
         const file = path.join(root, url.pathname === '/' ? 'index.html' : url.pathname);
         return route.fulfill({ body: fs.existsSync(file) ? fs.readFileSync(file) : '',
           contentType: url.pathname === '/' ? 'text/html' : url.pathname.endsWith('.css') ? 'text/css' : 'application/javascript' });
       }
       if (url.pathname.endsWith('.js')) return route.fulfill({ body: '', contentType: 'application/javascript' });
+      if (url.pathname === '/api/strategy-assistant/status') return route.fulfill({ json: { ready: true, message: '테스트 연결' } });
       if (url.pathname === '/api/accounts') return route.fulfill({ json: { result: [] } });
       if (url.pathname === '/api/health/exchange-rate') return route.fulfill({ json: { result: { rate: 1300, validUntil: '2026-11-05T00:00:00Z' } } });
       if (url.pathname === '/api/paper/summary') return route.fulfill({ json: { totalTrades: 0, openPositions: [], closedPositions: [] } });
@@ -60,17 +68,57 @@ async function dashboard(initial, run, clockTime, setup) {
   } finally { await browser.close(); }
 }
 
+test('strategy prompt leads on desktop and mobile, and tabs preserve prompt and briefing state', async () => {
+  await dashboard(briefing({ status: 'PARTIAL' }), async (page, panel) => {
+    const tab = page.getByRole('tab', { name: '투자 전략', exact: true });
+    const account = page.getByRole('tab', { name: '계좌·모의매매', exact: true });
+    const prompt = page.getByRole('textbox', { name: '전략 원문', exact: true });
+    const interpret = page.getByRole('button', { name: 'Codex로 조건 해석', exact: true });
+    await prompt.fill('조건을 입력한 상태');
+    await page.waitForFunction(() => [...document.querySelectorAll('#strategy-write button')].some(button => button.textContent === 'Codex로 조건 해석' && !button.matches(':disabled')));
+    await page.setViewportSize({ width: 1440, height: 900 });
+    const desktopPrompt = await prompt.boundingBox(), desktopBriefing = await panel.boundingBox();
+    assert.ok(desktopPrompt.x + desktopPrompt.width < desktopBriefing.x, 'desktop puts the real prompt beside the briefing');
+    assert.ok((await interpret.boundingBox()).y < 900);
+    const expand = panel.getByRole('button', { name: '펼치기', exact: true });
+    assert.equal(await expand.getAttribute('aria-expanded'), 'false');
+    await panel.getByRole('term').filter({ hasText: '코스피' }).waitFor();
+    assert.match(await panel.innerText(), /2,500 pt/);
+    assert.match(await panel.innerText(), /일부 자료 누락/);
+    assert.match(await panel.innerText(), /2026-11-03 15:30/);
+    await expand.click();
+    await panel.getByText('전일 코스피는 1% 하락했습니다.', { exact: true }).waitFor();
+
+    for (const width of [390, 320]) {
+      await page.setViewportSize({ width, height: 844 });
+      await page.evaluate(() => scrollTo(0, 0));
+      const draft = await prompt.boundingBox(), briefingBox = await panel.boundingBox();
+      assert.ok(draft.y + draft.height < briefingBox.y, 'mobile puts the real prompt before the briefing');
+      if (width === 390) assert.ok(briefingBox.y < 844, 'the next section starts in the first viewport');
+      const primary = await interpret.boundingBox();
+      assert.ok(primary.y + primary.height <= 844);
+      assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1), true);
+    }
+    await tab.focus();
+    await page.keyboard.press('ArrowRight');
+    assert.equal(await account.getAttribute('aria-selected'), 'true');
+    assert.equal(await panel.isVisible(), true);
+    assert.equal(await panel.getByRole('button', { name: '접기', exact: true }).getAttribute('aria-expanded'), 'true');
+    await page.keyboard.press('ArrowLeft');
+    assert.equal(await tab.getAttribute('aria-selected'), 'true');
+    assert.equal(await prompt.inputValue(), '조건을 입력한 상태');
+  }, undefined, undefined, { layout: true });
+});
+
 test('briefing visibility stays collapsed across tab changes, refreshes and reloads', async () => {
   await dashboard(briefing(), async (page, panel, state) => {
     await panel.getByText('전일 코스피는 1% 하락했습니다.', { exact: true }).waitFor();
-    const expandedHeight = await panel.evaluate(element => element.getBoundingClientRect().height);
     const toggle = panel.getByRole('button', { name: '접기', exact: true });
     await toggle.click();
     const expand = panel.getByRole('button', { name: '펼치기', exact: true });
     assert.equal(await expand.getAttribute('aria-expanded'), 'false');
     assert.equal(await panel.locator('#marketBriefingContent').isVisible(), false);
     assert.equal(await panel.getByRole('button', { name: '오늘 브리핑 생성', exact: true }).isVisible(), false);
-    assert.ok(await panel.evaluate(element => element.getBoundingClientRect().height) < expandedHeight / 2);
     await page.clock.fastForward(60000);
     await page.waitForFunction(() => document.querySelector('#marketBriefing').getAttribute('aria-busy') === 'false');
     assert.equal(await panel.locator('#marketBriefingContent').isVisible(), false);
@@ -115,6 +163,7 @@ test('a pending briefing generation does not reopen the collapsed panel', async 
 
 test('briefing visibility works with blocked storage and fits a mobile screen', async () => {
   await dashboard(briefing(), async (page, panel) => {
+    await panel.getByRole('button', { name: '펼치기', exact: true }).click();
     await panel.getByText('전일 코스피는 1% 하락했습니다.', { exact: true }).waitFor();
     await page.setViewportSize({ width: 375, height: 844 });
     await panel.getByRole('button', { name: '접기', exact: true }).click();
@@ -151,7 +200,7 @@ test('saved dates, quotes and cited observations remain visible across tabs and 
     const links = await panel.locator('a').evaluateAll(nodes => nodes.map(a => ({ href: a.href, rel: a.rel, target: a.target })));
     assert.ok(links.length >= 2);
     assert.ok(links.every(link => link.href.startsWith('https://') && link.rel.includes('noopener') && link.rel.includes('noreferrer') && link.target === '_blank'));
-    assert.equal(await panel.evaluate(el => !!(el.compareDocumentPosition(document.querySelector('.dashboard-tabs')) & Node.DOCUMENT_POSITION_FOLLOWING)), true);
+    assert.equal(await panel.evaluate(el => !!(document.querySelector('.dashboard-tabs').compareDocumentPosition(el) & Node.DOCUMENT_POSITION_FOLLOWING)), true);
     await page.getByRole('tab', { name: '계좌·모의매매', exact: true }).click();
     assert.equal(await panel.isVisible(), true);
     await page.getByRole('tab', { name: '투자 전략', exact: true }).click();

@@ -1,26 +1,22 @@
 .market-briefing {
-  margin: 0 0 28px;
-  padding: 24px;
+  margin: 0;
+  padding: clamp(16px, 2.1vw, 24px);
   min-width: 0;
-  border: 1px solid var(--rule);
-  border-top: 2px solid var(--ink);
+  border: 1px solid var(--dashboard-edge, var(--rule));
+  border-radius: 14px;
   background: var(--bg-raised);
   overflow-wrap: anywhere;
+  scroll-margin-top: var(--dashboard-anchor-offset, 96px);
 }
-.mb-heading {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
-  align-items: center;
-  gap: 16px;
-}
-.mb-heading h2 { font-size: 21px; font-weight: 750; line-height: 1.4; }
-.market-briefing.mb-collapsed { padding: 14px 24px; }
-.mb-toolbar { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px; margin-top: 12px; }
+.mb-heading h2 { font-size: 21px; font-weight: 750; line-height: 1.4; letter-spacing: -.03em; }
+.mb-toggle-row { padding-top: 12px; }
+.mb-toolbar { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px; margin-top: 14px; }
 .mb-schedule { margin: 0; color: var(--ink-dim); font-size: 12px; line-height: 1.6; }
 .mb-actions { display: flex; flex-wrap: wrap; gap: 8px; }
 .mb-actions button, .mb-toggle {
   padding: 9px 12px;
   border: 1px solid var(--rule);
+  border-radius: 7px;
   background: var(--bg-raised);
   color: var(--ink);
   font-family: inherit;
@@ -29,7 +25,7 @@
   line-height: 1.5;
   cursor: pointer;
 }
-.mb-toggle { min-height: 44px; min-width: 64px; }
+.mb-toggle { min-height: 44px; min-width: 64px; color: var(--accent); }
 .mb-toggle:hover { border-color: var(--accent); color: var(--accent); }
 .mb-actions button:last-child { background: var(--ink); border-color: var(--ink); color: var(--bg); }
 .mb-actions button:disabled { opacity: .55; cursor: wait; }
@@ -37,7 +33,7 @@
   outline: 2px solid var(--accent);
   outline-offset: 3px;
 }
-.mb-caption { display: flex; align-items: center; flex-wrap: wrap; gap: 10px; margin-top: 18px; }
+.mb-caption { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; margin-top: 8px; }
 .mb-date { margin: 0; font-size: 13px; font-weight: 650; line-height: 1.6; }
 .mb-badge { padding: 3px 7px; background: var(--soft); color: var(--ink-dim); font-size: 11px; font-weight: 650; }
 .mb-badge[data-status="READY"] { color: var(--positive); }
@@ -55,6 +51,23 @@
 .mb-change[data-direction="up"] { color: var(--positive); }
 .mb-change[data-direction="down"] { color: var(--negative); }
 .mb-observed { margin-top: 6px; margin-bottom: 0; color: var(--ink-dim); font-size: 10px; line-height: 1.6; }
+.market-briefing:not(.mb-collapsed) .mb-overview { display: none; }
+.mb-overview { margin: 12px 0 0; }
+.mb-overview-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: baseline;
+  gap: 2px 8px;
+  padding: 9px 0;
+  border-bottom: 1px solid var(--dashboard-edge, var(--rule));
+}
+.mb-overview-row dt { min-width: 0; color: var(--ink-dim); font-size: 13px; }
+.mb-overview-row dd { margin: 0; }
+.mb-overview-row .mb-observed { grid-column: 1 / -1; font-size: 11px; }
+.mb-overview-row .mb-quote-value { font-size: 15px; text-align: right; }
+.mb-overview-row .mb-change { display: inline-block; margin-left: 8px; }
+#accountBriefingSlot .mb-overview:not([hidden]) { grid-template-columns: repeat(auto-fit, minmax(min(100%, 216px), 1fr)); gap: 0 16px; }
+#accountBriefingSlot .mb-collapsed .mb-overview:not([hidden]) { display: grid; }
 .mb-items { display: grid; gap: 14px; padding: 0; margin: 18px 0; list-style: none; }
 .mb-items > li { min-width: 0; border-top: 1px solid var(--rule); padding-top: 14px; }
 .mb-items h3, .mb-warnings h3 { margin: 0; font-size: 14px; line-height: 1.6; }
@@ -72,9 +85,6 @@
 .market-briefing .mb-error { color: var(--negative); }
 .mb-failure { margin: 12px 0 0; font-size: 12px; line-height: 1.7; }
 @media (max-width: 640px) {
-  .market-briefing { padding: 18px; margin-bottom: 20px; }
-  .market-briefing.mb-collapsed { padding: 12px 18px; }
-  .mb-heading { gap: 12px; }
   .mb-heading h2 { font-size: 20px; }
   .mb-actions button { flex: 1; min-width: 0; }
   .mb-quotes { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
