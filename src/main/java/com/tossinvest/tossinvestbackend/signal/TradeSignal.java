@@ -8,7 +8,7 @@ import java.util.List;
 
 /**
  * 단일 종목에 대한 매매 신호 판단 결과.
- * .docs/trading-rules.md (v2.0) 의 점수제 규칙을 기반으로 계산된다.
+ * docs/specs/trading-rules.md (v2.0) 의 점수제 규칙을 기반으로 계산된다.
  */
 @Getter
 @Builder

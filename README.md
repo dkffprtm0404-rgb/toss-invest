@@ -16,10 +16,12 @@
 
 </div>
 
-> 문서 기준: **2026-10-20 / `85f2bb7`**<br/>
+> README 개편 기준: **2026-10-20 / `85f2bb7`**<br/>
 > 애플리케이션 버전: **`0.0.1-SNAPSHOT`** — README 개편과 애플리케이션 릴리스 버전은 별도로 관리합니다.
 
-> 최신 로컬 보완: **2026-11-12** — 데이터 준비 상태, 국내 시세 복구, 선택·한국어 오류·포트폴리오 입력 도움의 현재 범위와 미실행 검증은 [마무리 취합 보고](.docs/2026-11-12-completion-report.md)를 따릅니다. 아래의 과거 통과 기록을 이번 변경의 검증 결과로 사용하지 않습니다.
+> 문서 경로 정리: **2026-11-17** — 계획·명세·사용 안내·검토 기록은 [`docs` 전체 목차](docs/README.md)에서 관리합니다.
+
+> 기능 보완 기록: **2026-11-12** — 데이터 준비 상태, 국내 시세 복구, 선택·한국어 오류·포트폴리오 입력 도움의 반영 범위와 미실행 검증은 [마무리 취합 보고](docs/reports/2026-11-12-completion-report.md)를 따릅니다. **2026-11-16** 대시보드 작업은 [표시 설정 기록](docs/plans/dashboard-visibility-plan.md)과 [발표용 공백 처리 기록](docs/plans/dashboard-presentation-plan.md)을 참고하세요. 각 기록의 검증 시점과 한계를 구분합니다.
 
 <a id="overview"></a>
 ## 프로젝트 소개
@@ -65,7 +67,7 @@ AI는 자연어 해석과 결과 설명에 사용합니다. **전략 검증, 매
 - **`CALENDAR_WEEKS`**: 52주 범위는 달력상 주 단위로 계산합니다. 252거래일로 대체하지 않습니다.
 - **AND 조건**: 정배열·추세·가격 범위를 함께 지정하면 모든 조건이 충족되어야 진입합니다.
 
-구체적인 조건과 검증 사례는 [전략 확장 명세](.docs/strategy-expansion.md), [전략 예제 JSON](src/test/resources/demo/strategy-trend-template.json), [경계 조건 테스트](src/test/java/com/tossinvest/tossinvestbackend/strategy/TrendTemplateTests.java)에서 확인할 수 있습니다.
+구체적인 조건과 검증 사례는 [전략 확장 명세](docs/specs/strategy-expansion.md), [전략 예제 JSON](src/test/resources/demo/strategy-trend-template.json), [경계 조건 테스트](src/test/java/com/tossinvest/tossinvestbackend/strategy/TrendTemplateTests.java)에서 확인할 수 있습니다.
 
 <a id="architecture"></a>
 ## 아키텍처
@@ -202,7 +204,7 @@ codex login
 codex login status
 ```
 
-코드의 기본 모델 설정은 `gpt-5.6-terra`입니다. 필요하면 `STRATEGY_CODEX_MODEL`로 변경합니다. 실행 파일을 자동으로 찾지 못하면 `STRATEGY_CODEX_EXECUTABLE`을 설정합니다. 연결 상태와 자세한 설정은 [Codex 웹 연동 안내](.docs/codex-strategy-web.md)를 참고하세요.
+코드의 기본 모델 설정은 `gpt-5.6-terra`입니다. 필요하면 `STRATEGY_CODEX_MODEL`로 변경합니다. 실행 파일을 자동으로 찾지 못하면 `STRATEGY_CODEX_EXECUTABLE`을 설정합니다. 연결 상태와 자세한 설정은 [Codex 웹 연동 안내](docs/guides/codex-strategy-web.md)를 참고하세요.
 
 ### 4. 서버 시작
 
@@ -238,9 +240,9 @@ Invoke-RestMethod -Method Post -Uri "http://localhost:8090/api/backtest/import-c
 
 화면에서 해석된 조건을 확인하고 전략을 저장한 다음 종목·기간·체결 방식을 선택합니다. 필요한 캔들이 없다면 데이터를 준비한 뒤 다시 실행합니다.
 
-단일 종목 저장 전략(형식 1·2)의 백테스트에는 [실행 전 데이터 준비 사전 점검](.docs/data-readiness.md)이 연결돼 있습니다. 요청 기간·저장 범위·봉 수와 진입 판단 준비 여부를 구분하며, 점검 조회는 데이터를 수집하거나 실행 이력을 저장하지 않습니다. 준비 상태가 READY 또는 PARTIAL이고 현재 입력의 현황·제한 사항을 확인해야 실행할 수 있습니다. 입력·전략 버전 변경과 재조회는 이전 확인을 해제합니다.
+단일 종목 저장 전략(형식 1·2)의 백테스트에는 [실행 전 데이터 준비 사전 점검](docs/specs/data-readiness.md)이 연결돼 있습니다. 요청 기간·저장 범위·봉 수와 진입 판단 준비 여부를 구분하며, 점검 조회는 데이터를 수집하거나 실행 이력을 저장하지 않습니다. 준비 상태가 READY 또는 PARTIAL이고 현재 입력의 현황·제한 사항을 확인해야 실행할 수 있습니다. 입력·전략 버전 변경과 재조회는 이전 확인을 해제합니다.
 
-포트폴리오·조합 실행에는 [시장자료 예시와 입력 검증 미리보기](.docs/strategy-portfolio.md#2026-11-12-입력-도움)가 있습니다. 이 미리보기는 실제 시장 구성·거래일 완전성·일봉 준비 판정과 구분합니다. 전략별 모의매매는 형식 1·2만 지원하며 미지원 전략·버전을 선택하면 이전 실행 대상을 해제합니다. 자세한 사용법은 [모의매매 안내](.docs/strategy-paper-trading.md)를 따릅니다.
+포트폴리오·조합 실행에는 [시장자료 예시와 입력 검증 미리보기](docs/specs/strategy-portfolio.md#2026-11-12-입력-도움)가 있습니다. 이 미리보기는 실제 시장 구성·거래일 완전성·일봉 준비 판정과 구분합니다. 전략별 모의매매는 형식 1·2만 지원하며 미지원 전략·버전을 선택하면 이전 실행 대상을 해제합니다. 자세한 사용법은 [모의매매 안내](docs/specs/strategy-paper-trading.md)를 따릅니다.
 
 <a id="verification"></a>
 ## 검증
@@ -270,7 +272,7 @@ Java나 Node 모듈 위치를 직접 지정해야 하는 경우:
 | 전략 흐름 | 자연어 초안 → 검증 → 저장 → 실행 → 이력·분석 조회 |
 | 실행 격리 | `stage9-test` 프로필, 테스트용 DB, 외부 서비스 고정 응답 사용 |
 
-결과는 `build/stage9-verification.json`, 실행 로그, `build/reports/tests/test/index.html`과 브라우저 캡처에서 확인합니다. 자세한 준비·판정 기준은 [통합 검증 실행 안내](.docs/integration-demo.md)를 참고하세요.
+결과는 `build/stage9-verification.json`, 실행 로그, `build/reports/tests/test/index.html`과 브라우저 캡처에서 확인합니다. 자세한 준비·판정 기준은 [통합 검증 실행 안내](docs/guides/integration-demo.md)를 참고하세요.
 
 이 검증은 실제 토스 인증 정보나 Codex 로그인 없이 수행하도록 구성되어 있습니다. **실제 외부 API 연결, 실모델 응답, 장기간 운영까지 통과했다는 의미는 아닙니다.** 테스트 수와 성공 여부는 각 실행의 결과 파일로 확인합니다.
 
@@ -307,7 +309,7 @@ Java나 Node 모듈 위치를 직접 지정해야 하는 경우:
 - 조회 API는 저장 상태를 읽습니다. 수동 `refresh`는 시세 제공자를 호출합니다.
 - 확정봉을 기다리는 `WAITING_DATA`와 호출 제한 `MARKET_RATE_LIMITED`를 구분합니다.
 
-설정과 상태 전이는 [전략별 모의매매 명세](.docs/strategy-paper-trading.md)에 정리되어 있습니다.
+설정과 상태 전이는 [전략별 모의매매 명세](docs/specs/strategy-paper-trading.md)에 정리되어 있습니다.
 
 <details>
 <summary><strong>기존 점수 기반 페이퍼와 1분봉 스캘핑 규칙</strong></summary>
@@ -360,19 +362,26 @@ src/main/resources/
 
 src/test/              # 엔진·API·통합 테스트·데모 데이터
 scripts/               # 캔들 수집·자동 검증·브라우저 테스트
-.docs/                 # 기능 명세·API·설계·실행 안내
+docs/                  # 프로젝트 문서와 예제 통합 관리
+├── README.md          # 전체 문서 목차·관리 기준
+├── plans/             # 기획·설계·실행 계획
+├── specs/             # 기능 명세·API 계약
+├── guides/            # 실행·사용·운영 확인 안내
+├── reports/           # 검증·검토·완료·진행 기록
+├── examples/          # 문서에서 사용하는 요청 JSON
+└── assets/            # 문서에서 사용하는 이미지
 ```
 
 <a id="documents"></a>
 ## 상세 문서
 
-| 주제 | 문서 |
-| --- | --- |
-| 전략 모델·기본 실행 | [전략 명세](.docs/strategy-spec.md) · [사용자 전략 백테스트](.docs/user-strategy-backtest.md) |
-| 버전·실행 이력 | [전략·실행 결과 저장](.docs/strategy-persistence.md) |
-| 자연어 작성 | [Codex 웹 연동](.docs/codex-strategy-web.md) · [여러 전략 입력](.docs/strategy-batch-input.md) |
-| 조건 확장 | [이동평균·돌파·52주 가격 조건](.docs/strategy-expansion.md) |
-| 포트폴리오·조합 | [포트폴리오](.docs/strategy-portfolio.md) · [조합 전략](.docs/strategy-composition.md) |
-| 결과·비교 | [분석·AI 설명](.docs/backtest-results-explanation.md) · [전략 비교](.docs/strategy-comparison.md) |
-| 모의매매 | [전략별 모의매매](.docs/strategy-paper-trading.md) · [기존 매매 규칙](.docs/trading-rules.md) |
-| 자동 검증 | [통합 검증 실행 안내](.docs/integration-demo.md) |
+계획과 검토 기록을 포함한 전체 목록은 [문서 목차와 관리 기준](docs/README.md)을 참고하세요. 루트 README를 제외한 프로젝트 Markdown은 `docs/`에서 관리합니다.
+
+- 기획·계획: [프로젝트 기획서](docs/plans/project-plan.md) · [마무리 실행 계획](docs/plans/2026-11-12-completion-plan.md)
+- 전략 모델·저장·실행: [전략 명세](docs/specs/strategy-spec.md) · [전략·실행 결과 저장](docs/specs/strategy-persistence.md) · [백테스트 API 사용법](docs/guides/user-strategy-backtest.md)
+- 자연어·조건: [Codex 웹 연동](docs/guides/codex-strategy-web.md) · [여러 전략 입력](docs/specs/strategy-batch-input.md) · [이동평균·돌파·52주 조건](docs/specs/strategy-expansion.md) · [MACD·볼린저밴드](docs/specs/strategy-indicators.md)
+- 데이터·브리핑: [실행 전 데이터 준비](docs/specs/data-readiness.md) · [장전 시장 요약](docs/specs/market-briefing.md)
+- 포트폴리오·조합: [포트폴리오](docs/specs/strategy-portfolio.md) · [조합 전략](docs/specs/strategy-composition.md)
+- 결과·비교: [분석·AI 설명](docs/specs/backtest-results-explanation.md) · [전략 비교](docs/specs/strategy-comparison.md)
+- 모의매매: [전략별 모의매매](docs/specs/strategy-paper-trading.md) · [기존 매매 규칙](docs/specs/trading-rules.md)
+- 검증·보고: [통합 검증 실행 안내](docs/guides/integration-demo.md) · [마무리 취합 보고](docs/reports/2026-11-12-completion-report.md)
